@@ -27,4 +27,5 @@ file_permissions=(
   ["/usr/local/share/wm.sh"]="0:0:755"
   ["/usr/share/stormos/install.sh"]="0:0:755"
   ["/usr/local/bin/kwin-remove.sh"]="0:0:755"
+  ["/usr/local/bin/welcome"]="0:0:755"
 )
