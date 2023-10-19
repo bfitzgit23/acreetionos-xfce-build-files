@@ -18,9 +18,7 @@ file_permissions=(
   ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/postinstall.sh"]="0:0:755"
   ["/usr/local/bin/readme"]="0:0:755"
-  ["/usr/bin/menuxstorm"]="0:0:777"
   ["/usr/bin/wgetm"]="0:0:777"
-  ["/usr/bin/playmovie"]="0:0:777"
   ["/usr/bin/axelc8"]="0:0:777"
   ["/etc/gshadow"]="0:0:400"
   ["/etc/shadow"]="0:0:400"
@@ -28,4 +26,6 @@ file_permissions=(
   ["/usr/share/stormos/install.sh"]="0:0:755"
   ["/usr/local/bin/kwin-remove.sh"]="0:0:755"
   ["/usr/local/bin/welcome"]="0:0:755"
+  ["/usr/local/bin/stormos-before"]="0:0:755"
+  ["/usr/local/bin/stormos-final"]="0:0:755"
 )
