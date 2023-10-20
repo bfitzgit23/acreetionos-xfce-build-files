@@ -34,7 +34,6 @@ gnu-netcat
 gpart
 gpm
 gptfdisk
-grml-zsh-config
 grub-git
 #grub
 haveged
@@ -76,6 +75,7 @@ parted
 partimage
 ppp
 pptpclient
+plymouth
 reflector
 reiserfsprogs
 rp-pppoe
@@ -251,6 +251,15 @@ ttf-ubuntu-font-family
 terminus-font
 ttf-joypixels
 ttf-font-awesome
+asian-fonts
+ttf-fira-code
+otf-libertinus
+tex-gyre-fonts
+ttf-hack-nerd
+ttf-ubuntu-font-family
+awesome-terminal-fonts
+ttf-jetbrains-mono-nerd
+adobe-source-sans-pro-fonts
 
 ## Virtualbox #############################
 virtualbox-host-dkms
@@ -309,6 +318,8 @@ flex
 python-sphinx
 python-sphinx_rtd_theme
 cpio
+yt-dlp
+mcfly
 
 ## Xdg Utilities #############################
 xdg-utils
@@ -425,6 +436,13 @@ xfce4-weather-plugin
 xfce4-whiskermenu-plugin
 xfce4-xkb-plugin
 
+## kwin ##
+kwin
+systemsettings
+kde-gtk-config
+plasma-desktop
+plasma-workspace
+
 # ###########################
 # AUR APPS - DO NOT REORDER #
 # ###########################
@@ -438,6 +456,8 @@ colloid-gtk-theme-git
 dxvk-bin
 gconf
 gksu
+ttf-jetbrains-mono-nerd
+ttf-jetbrains-mono
 libgksu
 kwin-effects-cube
 mintstick-git
@@ -451,6 +471,13 @@ preload
 python-libretranslate-git
 python-translate
 python-speechrecognition
+python-pyqt5
+python-pip
+python-pyqt5-webengine
+python-jq
+python-gtts
+python-openpyxl
+python-xlsxwriter
 surfn-icons-git
 stormos-grub-theme
 stormos-conf
@@ -466,7 +493,7 @@ yay
 python-urllib3
 ckbcomp
 kpmcore
-stormos-etc-skel-config
+#stormos-etc-skel-config
 stormos-calamares-xfce-config
 #stormos-calamares
 calamares-app
