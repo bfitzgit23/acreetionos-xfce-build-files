@@ -1,0 +1,35 @@
+#!/bin/bash
+
+### echo "choose your gpu" ###
+
+#!/bin/bash
+
+# Check if envycontrol is installed
+if ! command -v envycontrol &> /dev/null; then
+    echo "envycontrol is not installed. Please run yinstall envycontrol."
+    exit 1
+fi
+
+# Check for the available graphics modes
+echo "Available graphics modes:"
+echo "1. Integrated (Intel/AMD APU)"
+echo "2. Discrete (Nvidia)"
+echo -n "Select a graphics mode (1 or 2): "
+read choice
+
+case "$choice" in
+    1)
+        # Set Integrated (Intel/AMD apu) graphics
+	sudo envycontrol -s hybrid
+        echo "Switched to Integrated (Intel/AMD APU) graphics."
+        ;;
+    2)
+        # Set Discrete (Nvidia) graphics
+	sudo envycontrol -s nvidia --force-comp --coolbits 24
+        echo "Switched to Discrete (Nvidia) graphics."
+        ;;
+    *)
+        echo "Invalid choice. Please select 1 or 2 or 3."
+        ;;
+esac
+
