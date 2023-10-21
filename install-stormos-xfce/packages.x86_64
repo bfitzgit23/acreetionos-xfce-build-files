@@ -471,7 +471,7 @@ preload
 python-libretranslate-git
 python-translate
 python-speechrecognition
-python-pyqt5
+python-pyqt5-webkit
 python-pip
 python-pyqt5-webengine
 python-jq
