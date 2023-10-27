@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=StormOS Bookmarks Manager
+Name=StormOS Optimus Switcher
 Comment=
-Exec=/usr/local/bin/bmqt
-Icon=bookmark-add
+Exec=/usr/local/bin/optimus
+Icon=optimus-indicator-unknown
 Path=
 Terminal=false
 StartupNotify=false

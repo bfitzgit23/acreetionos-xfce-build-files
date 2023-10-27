@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=StormOS Bookmarks Manager
+Name=StormOS Youtube Player
 Comment=
-Exec=/usr/local/bin/bmqt
-Icon=bookmark-add
+Exec=/usr/local/bin/stubet
+Icon=youtube
 Path=
 Terminal=false
 StartupNotify=false

@@ -3,6 +3,7 @@
 alsa-utils
 amd-ucode
 arch-install-scripts
+archlinux-keyring
 b43-fwcutter
 base
 base-devel
@@ -34,8 +35,7 @@ gnu-netcat
 gpart
 gpm
 gptfdisk
-grub-git
-#grub
+grub
 haveged
 hdparm
 intel-ucode
@@ -491,9 +491,20 @@ yay
 
 ## Calamares Installer
 python-urllib3
-ckbcomp
-kpmcore
+plasma-framework5
 #stormos-etc-skel-config
 stormos-calamares-xfce-config
 #stormos-calamares
 calamares-app
+kio5
+ki18n5
+solid5
+xmlto
+ckbcomp
+kconfig5
+kpmcore
+qt5-base
+yaml-cpp
+boost-libs
+kcoreaddons5
+kiconthemes5

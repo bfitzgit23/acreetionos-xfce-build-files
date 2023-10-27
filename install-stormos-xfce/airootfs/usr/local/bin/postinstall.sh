@@ -27,6 +27,7 @@ echo "FONT=ter-p16n" >> /etc/vconsole.conf
 rm -rf /usr/share/calamares
 rm -rf /usr/share/stormos
 rm -rf $HOME/liveuser/Desktop/calamares.desktop
+rm -rf $HOME/liveuser/Desktop/Install\ StormOS.Desktop
 rm -rf $HOME/.config/autostart/calamares.desktop
 rm -rf $HOME/.config/autostart/NetworkManager.desktop
 
