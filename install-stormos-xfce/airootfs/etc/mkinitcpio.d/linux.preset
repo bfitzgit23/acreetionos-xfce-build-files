@@ -8,9 +8,9 @@ PRESETS=('default' 'fallback')
 ALL_kver='/boot/vmlinuz-linux'
 ALL_config='/etc/mkinitcpio.conf'
 
-#default_config="/etc/mkinitcpio.conf"
+default_config="/etc/mkinitcpio.conf"
 default_image="/boot/initramfs-linux.img"
-#default_options=""
+default_options="plymouth"
 
 #fallback_config="/etc/mkinitcpio.conf"
 fallback_image="/boot/initramfs-linux-fallback.img"
