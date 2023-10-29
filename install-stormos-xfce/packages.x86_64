@@ -442,6 +442,7 @@ systemsettings
 kde-gtk-config
 plasma-desktop
 plasma-workspace
+kwin-effects-cube
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -492,7 +493,7 @@ yay
 ## Calamares Installer
 python-urllib3
 plasma-framework5
-#stormos-etc-skel-config
+stormos-xfce-config
 stormos-calamares-xfce-config
 #stormos-calamares
 calamares-app
