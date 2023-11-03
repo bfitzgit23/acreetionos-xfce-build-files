@@ -34,7 +34,7 @@ rm -rf $HOME/.config/autostart/NetworkManager.desktop
 pacman-key --init
 pacman-key --populate archlinux
 
-
+plymouth-set-default-theme stormos
 
 # Continue cleanup
 rm /usr/local/bin/postinstall.sh

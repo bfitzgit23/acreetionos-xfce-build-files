@@ -10,8 +10,8 @@ ALL_config='/etc/mkinitcpio.conf'
 
 default_config="/etc/mkinitcpio.conf"
 default_image="/boot/initramfs-linux.img"
-default_options="plymouth"
+default_options=""
 
 #fallback_config="/etc/mkinitcpio.conf"
 fallback_image="/boot/initramfs-linux-fallback.img"
-fallback_options="-S autodetect"
+fallback_options=""
