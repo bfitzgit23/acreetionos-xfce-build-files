@@ -1,35 +1,56 @@
-#!/bin/bash
+#!/usr/bin/env python3
 
-### echo "choose your gpu" ###
+import sys
+import subprocess
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QComboBox, QMessageBox
 
-#!/bin/bash
+class GPUSelector(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
 
-# Check if envycontrol is installed
-if ! command -v envycontrol &> /dev/null; then
-    echo "envycontrol is not installed. Please run yinstall envycontrol."
-    exit 1
-fi
+    def initUI(self):
+        self.setWindowTitle('GPU Selector')
+        self.setGeometry(100, 100, 400, 150)
 
-# Check for the available graphics modes
-echo "Available graphics modes:"
-echo "1. Integrated (Intel/AMD APU)"
-echo "2. Discrete (Nvidia)"
-echo -n "Select a graphics mode (1 or 2): "
-read choice
+        layout = QVBoxLayout()
 
-case "$choice" in
-    1)
-        # Set Integrated (Intel/AMD apu) graphics
-	sudo envycontrol -s hybrid
-        echo "Switched to Integrated (Intel/AMD APU) graphics."
-        ;;
-    2)
-        # Set Discrete (Nvidia) graphics
-	sudo envycontrol -s nvidia --force-comp --coolbits 24
-        echo "Switched to Discrete (Nvidia) graphics."
-        ;;
-    *)
-        echo "Invalid choice. Please select 1 or 2 or 3."
-        ;;
-esac
+        label = QLabel('Choose your GPU:')
+        layout.addWidget(label)
 
+        self.gpu_combo = QComboBox()
+        self.gpu_combo.addItem('Integrated (Intel/AMD APU)')
+        self.gpu_combo.addItem('Discrete (Nvidia)')
+        layout.addWidget(self.gpu_combo)
+
+        switch_button = QPushButton('Switch GPU')
+        switch_button.clicked.connect(self.switch_gpu)
+        layout.addWidget(switch_button)
+
+        self.setLayout(layout)
+
+    def switch_gpu(self):
+        choice = self.gpu_combo.currentText()
+
+        if choice == 'Integrated (Intel/AMD APU)':
+            command = ['sudo', 'envycontrol', '-s', 'hybrid']
+        elif choice == 'Discrete (Nvidia)':
+            command = ['sudo', 'envycontrol', '-s', 'nvidia', '--force-comp', '--coolbits', '24']
+        else:
+            QMessageBox.warning(self, 'Invalid Choice', 'Please select a valid GPU option.')
+            return
+
+        try:
+            subprocess.run(command, check=True)
+            QMessageBox.information(self, 'Success', 'Switched to {}'.format(choice))
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, 'Error', 'An error occurred: {}'.format(str(e)))
+
+def main():
+    app = QApplication(sys.argv)
+    window = GPUSelector()
+    window.show()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()

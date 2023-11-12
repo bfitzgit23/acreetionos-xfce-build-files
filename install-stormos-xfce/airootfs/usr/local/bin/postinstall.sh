@@ -30,6 +30,8 @@ rm -rf $HOME/liveuser/Desktop/calamares.desktop
 rm -rf $HOME/liveuser/Desktop/Install\ StormOS.Desktop
 rm -rf $HOME/.config/autostart/calamares.desktop
 rm -rf $HOME/.config/autostart/NetworkManager.desktop
+rm /usr/share/applications/calamares.desktop
+rm /usr/share/applications/Install-StormOS-CLI.desktop
 
 pacman-key --init
 pacman-key --populate archlinux

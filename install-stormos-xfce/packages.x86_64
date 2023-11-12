@@ -260,6 +260,7 @@ ttf-ubuntu-font-family
 awesome-terminal-fonts
 ttf-jetbrains-mono-nerd
 adobe-source-sans-pro-fonts
+ttf-roboto
 
 ## Virtualbox #############################
 virtualbox-host-dkms
@@ -376,7 +377,7 @@ qt5-quickcontrols2
 qt5-translations
 qt5-x11extras
 qt5ct
-kvantum-qt5-git
+kvantum
 
 ## Music Player #############################
 
@@ -453,18 +454,16 @@ gtk-doc
 libgtop
 
 cfs-zen-tweaks
-colloid-gtk-theme-git
 dxvk-bin
+dracula-gtk-gtheme
+plasma5-themes-dracula-git
 gconf
-gksu
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
-libgksu
 kwin-effects-cube
 mintstick-git
 mkinitcpio-openswap
 mission-center
-nordic-kde-git
 qt5-styleplugins
 oh-my-bash-git
 pamac-all
@@ -479,6 +478,7 @@ python-jq
 python-gtts
 python-openpyxl
 python-xlsxwriter
+python-git-python
 surfn-icons-git
 stormos-grub-theme
 stormos-conf
@@ -488,7 +488,7 @@ ttf-ms-fonts
 xboxdrv
 xfce4-panel-profiles
 yay
-#zensu
+zensu
 
 ## Calamares Installer
 python-urllib3

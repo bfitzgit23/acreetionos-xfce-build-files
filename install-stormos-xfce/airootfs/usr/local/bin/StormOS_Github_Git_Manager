@@ -1,0 +1,839 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import git
+import json
+import requests
+import shutil
+import subprocess
+
+from PyQt5.QtWidgets import QSizePolicy, QAction, QApplication, QMainWindow, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget, QMessageBox, QComboBox, QHBoxLayout, QFileDialog, QInputDialog
+from PyQt5.QtCore import QSize, Qt
+
+from git import Repo
+
+class GitHubGitClient(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+        # Load GitHub token from the configuration file
+        self.load_github_token()
+        # Load Git credentials from the JSON file
+        self.load_git_credentials()
+
+    def initUI(self):
+        self.setWindowTitle('GitHub Git Client')
+        self.setGeometry(100, 100, 800, 600)
+
+
+
+        # Create a menu bar
+        menubar = self.menuBar()
+
+        # Create a "Git" menu
+        git_menu = menubar.addMenu('Git')
+
+        # Add a menu item to configure Git credentials
+        configure_credentials_action = QAction('Configure Credentials', self)
+        configure_credentials_action.triggered.connect(self.configure_git_credentials)
+        git_menu.addAction(configure_credentials_action)
+
+
+        # Create central widget and layout
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+
+        # Create a horizontal layout for username and PAT input
+        input_layout = QHBoxLayout()
+
+        # Add username label and input field
+        self.username_label = QLabel('GitHub Username:')
+        self.username_input = QLineEdit(self)
+        input_layout.addWidget(self.username_label)
+        input_layout.addWidget(self.username_input)
+
+        # Add Personal Access Token (PAT) input field
+        self.token_label = QLabel('GitHub Personal Access Token:')
+        self.token_input = QLineEdit(self)
+        input_layout.addWidget(self.token_label)
+        input_layout.addWidget(self.token_input)
+
+        layout.addLayout(input_layout)
+
+        # Add fetch button for repositories
+        fetch_repos_button = QPushButton('Fetch Repositories', self)
+        fetch_repos_button.clicked.connect(self.fetch_repositories)
+        layout.addWidget(fetch_repos_button)
+
+        # Add a combo box to select a repository
+        self.repo_combo_box = QComboBox(self)
+        layout.addWidget(self.repo_combo_box)
+
+        # Add text browser to display repository details
+        self.repo_details_browser = QTextBrowser(self)
+        layout.addWidget(self.repo_details_browser)
+
+        # Set the size policy and minimum size for the text browser
+        self.repo_details_browser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.repo_details_browser.setMinimumSize(QSize(200, 200))  # Adjust the minimum size as needed
+
+
+
+        # Add a button to select or specify the repository path
+        select_repo_button = QPushButton('Select Repository', self)
+        select_repo_button.clicked.connect(self.select_repository)
+        layout.addWidget(select_repo_button)
+
+
+
+        # Add a button for copying files to the local repository
+        copy_to_local_repo_button = QPushButton('Copy to Local Repo', self)
+        copy_to_local_repo_button.clicked.connect(self.copy_to_local_repo)
+        layout.addWidget(copy_to_local_repo_button)
+
+
+        # Add a button for Git Add
+        self.git_add_button = QPushButton('Git Add', self)
+        self.git_add_button.clicked.connect(self.git_add)
+        layout.addWidget(self.git_add_button)
+
+
+
+        # Add buttons for Git commit, push, create, clone, and pull
+        #self.commit_button = QPushButton('Commit', self)
+        self.push_button = QPushButton('Push', self)
+
+
+        # Add a button to update packages (git add -u)
+        self.update_packages_button = QPushButton('Update Packages', self)
+        self.update_packages_button.clicked.connect(self.update_packages)
+        
+
+
+        # Add a line edit widget for entering the commit message
+        #self.commit_message_label = QLabel('Commit Message:')
+        #self.commit_message_input = QLineEdit(self)
+        #layout.addWidget(self.commit_message_label)
+        #layout.addWidget(self.commit_message_input)
+
+        # Add a button for committing changes with a message
+        commit_button = QPushButton('Commit with Message', self)
+        commit_button.clicked.connect(self.commit_changes_with_message)
+        layout.addWidget(commit_button)
+
+
+
+
+        self.create_repo_button = QPushButton('Create Repository', self)
+        self.clone_repo_button = QPushButton('Clone Repository', self)
+        self.pull_button = QPushButton('Pull Changes', self)
+
+
+        git_status_button = QPushButton('Git Status', self)
+        git_status_button.clicked.connect(self.check_git_status)
+
+        
+
+        # Connect button actions
+        #self.commit_button.clicked.connect(self.select_commit_files)
+        self.push_button.clicked.connect(self.push_changes)
+        self.create_repo_button.clicked.connect(self.create_repository)
+        self.clone_repo_button.clicked.connect(self.clone_repository)
+        self.pull_button.clicked.connect(self.pull_changes)
+
+        #layout.addWidget(self.commit_button)
+        layout.addWidget(self.push_button)
+        layout.addWidget(self.update_packages_button)
+        layout.addWidget(self.create_repo_button)
+        layout.addWidget(self.clone_repo_button)
+        layout.addWidget(self.pull_button)
+
+        # Add a button to initialize a Git repository
+        init_git_button = QPushButton('Initialize Git Repository', self)
+        init_git_button.clicked.connect(self.init_git_repository)
+        layout.addWidget(init_git_button)
+
+
+        layout.addWidget(git_status_button)
+
+
+        # Add an input field for Git commands
+        #self.git_command_input = QLineEdit(self)
+        #layout.addWidget(self.git_command_input)
+
+
+
+        self.git_command_input = QLineEdit(self)
+        self.git_command_input.setPlaceholderText("Enter Git Command and press Enter")
+        self.git_command_input.returnPressed.connect(self.execute_git_command)
+        layout.addWidget(self.git_command_input)
+
+
+        # Add a button to execute Git commands
+        execute_git_command_button = QPushButton('Execute Git Command', self)
+        execute_git_command_button.clicked.connect(self.execute_git_command)
+        layout.addWidget(execute_git_command_button)
+
+
+        self.repo_path = None  # Initialize repo_path to None
+        self.commit_files = []  # Store the selected files for commit
+    
+
+        # Load GitHub token from a JSON file
+        self.load_github_token()
+
+
+    def display_message(self, message):
+        self.message_browser.append(message)  # Append the message
+        # Scroll to the bottom of the QTextBrowser
+        scrollbar = self.message_browser.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+
+    def save_git_credentials(self, username, token):
+        # Save Git credentials to a JSON file in the user's home directory
+        credentials = {'username': username, 'token': token}
+        credentials_file = os.path.expanduser("~/Documents/github_credentials.json")
+        with open(credentials_file, 'w') as file:
+            json.dump(credentials, file)
+
+    def load_git_credentials(self):
+        # Load Git credentials from the JSON file if it exists
+        credentials_file = os.path.expanduser("~/Documents/github_credentials.json")
+        if os.path.exists(credentials_file):
+            with open(credentials_file, 'r') as file:
+                credentials = json.load(file)
+                self.username_input.setText(credentials['username'])
+                self.token_input.setText(credentials['token'])
+
+    def configure_git_credentials(self):
+        try:
+            # Get the GitHub username and token from the input fields
+            username = self.username_input.text()
+            token = self.token_input.text()
+
+            if not username or not token:
+                self.display_message("Please enter your GitHub username and Personal Access Token (PAT).")
+                return
+
+            # Configure Git credentials globally
+            subprocess.run(['git', 'config', '--global', 'user.name', username])
+            subprocess.run(['git', 'config', '--global', 'user.email', f'{username}@users.noreply.github.com'])
+            subprocess.run(['git', 'config', '--global', 'credential.helper', 'store'])
+            subprocess.run(['git', 'credential', 'approve'], input=f'url=https://github.com\nusername={username}\npassword={token}\n', text=True, check=True)
+
+            # Save Git credentials to the JSON file
+            self.save_git_credentials(username, token)
+        except Exception as e:
+            self.display_message(f"Error configuring Git credentials: {e}")
+
+    # ...
+
+
+
+    def load_github_token(self):
+        # Load GitHub token from the configuration file
+        config_file_path = os.path.join(os.path.expanduser("~"), "Documents", "github_token.json")
+        if os.path.exists(config_file_path):
+            try:
+                with open(config_file_path, "r") as config_file:
+                    config_data = json.load(config_file)
+                    if "github_token" in config_data:
+                        self.github_token = config_data["github_token"]
+                        self.token_input.setText(self.github_token)
+            except Exception as e:
+                print(f"Error loading GitHub token: {e}")
+                self.github_token = None
+        else:
+            self.github_token = None
+
+    def save_github_token(self):
+        # Save GitHub token to the configuration file
+        config_data = {"github_token": self.github_token}
+        config_file_path = os.path.join(os.path.expanduser("~"), "Documents", "github_token.json")
+        try:
+            with open(config_file_path, "w") as config_file:
+                json.dump(config_data, config_file)
+        except Exception as e:
+            print(f"Error saving GitHub token: {e}")
+
+    def retrieve_github_credentials(self):
+        # Retrieve the GitHub username
+        self.github_username = self.username_input.text()
+
+        try:
+            # Get the user's Documents folder
+            documents_folder = os.path.expanduser("~/Documents")
+
+            # Create a path for the JSON file
+            json_file_path = os.path.join(documents_folder, "GitHubGitClient/github_credentials.json")
+
+            # Load the credentials from the JSON file
+            with open(json_file_path, "r") as json_file:
+                credentials = json.load(json_file)
+                if credentials["username"] == self.github_username:
+                    self.token_input.setText(credentials["token"])
+                    self.github_token = credentials["token"]
+                    self.display_message("GitHub credentials retrieved successfully.")
+        except FileNotFoundError:
+            self.display_message("GitHub credentials file not found.")
+        except Exception as e:
+            self.display_message(f"Error retrieving GitHub credentials: {e}")
+
+
+    def store_github_token(self, github_token):
+        if not self.github_username:
+            self.display_message("Please enter your GitHub username first.")
+            return
+
+        # Get the user's Documents folder
+        documents_folder = os.path.expanduser("~/Documents")
+
+        # Create a directory for storing application data (if it doesn't exist)
+        app_data_folder = os.path.join(documents_folder, "GitHubGitClient")
+        os.makedirs(app_data_folder, exist_ok=True)
+
+        # Create a path for the JSON file
+        json_file_path = os.path.join(app_data_folder, "github_credentials.json")
+
+        # Create a dictionary to store the GitHub token
+        credentials = {"username": self.github_username, "token": github_token}
+
+        try:
+            # Store the credentials in the JSON file
+            with open(json_file_path, "w") as json_file:
+                json.dump(credentials, json_file)
+
+            self.display_message("GitHub token stored successfully.")
+        except Exception as e:
+            self.display_message(f"Error storing GitHub token: {e}")
+
+
+    def run_git_status(self):
+        try:
+            result = subprocess.run('git status', shell=True, text=True, capture_output=True)
+            output = result.stdout
+            if result.stderr:
+                output += "\n" + result.stderr
+
+            self.display_message(output)
+        except Exception as e:
+            self.display_message(f"Error running 'git status': {e}")
+
+
+
+    def execute_git_command(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Get the Git command entered by the user
+            git_command = self.git_command_input.text()
+
+            # Check if the command starts with 'git '
+            if not git_command.startswith('git '):
+                # If not, prepend 'git ' to the command
+                git_command = 'git ' + git_command
+
+            # Execute the Git command with the correct 'cwd' (current working directory)
+            result = subprocess.run(git_command.split(), cwd=self.repo_path, check=True, text=True, capture_output=True)
+
+            if result.returncode == 0:
+                # Command executed successfully
+                self.display_message(result.stdout)
+            else:
+                # Command execution failed
+                self.display_message(f"Error executing Git command:\n{result.stderr}")
+        except Exception as e:
+            self.display_message(f"Error executing Git command: {e}")
+
+    # ... (Other functions)
+
+    def push_changes(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Use GitPython to push changes to the remote repository
+            repo = Repo(self.repo_path)  # Use the selected repo_path
+            origin = repo.remote(name='origin')
+            origin.push()
+            self.display_message("Changes pushed to remote successfully.")
+
+            # Display the repository contents after the push
+            self.view_repository_contents()
+        except Exception as e:
+            self.display_message(f"Error pushing changes: {e}")
+
+    # ... (Rest of your code)
+
+    def save_github_token(self):
+        # Save the GitHub token to a JSON file
+        if self.github_token:
+            token_path = os.path.expanduser("~/Documents/github_token.json")
+            data = {"token": self.github_token}
+            with open(token_path, "w") as token_file:
+                json.dump(data, token_file)
+
+    def load_github_token(self):
+        # Load the GitHub token from a JSON file
+        token_path = os.path.expanduser("~/Documents/github_token.json")
+        if os.path.exists(token_path):
+            with open(token_path, "r") as token_file:
+                data = json.load(token_file)
+                self.github_token = data.get("token", "")
+                self.token_input.setText(self.github_token)
+
+
+
+    def update_packages(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Run the 'git add -u' command to update packages
+            subprocess.run(['git', 'add', '-u'], cwd=self.repo_path, check=True, text=True)
+            self.display_message("Packages updated successfully.")
+        except subprocess.CalledProcessError as e:
+            self.display_message(f"Error updating packages: {e}")
+
+    def copy_to_local_repo(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Open a file dialog to select files or directories to copy
+            files, _ = QFileDialog.getOpenFileNames(self, "Select Files or Directories to Copy", self.repo_path)
+
+            if files:
+                # Prompt the user to select a destination folder within the local repo
+                dest_folder = QFileDialog.getExistingDirectory(self, "Select Destination Folder in Local Repo")
+
+                if dest_folder:
+                    for file_path in files:
+                        file_name = os.path.basename(file_path)
+                        dest_path = os.path.join(dest_folder, file_name)
+                        shutil.copy(file_path, dest_path)
+                        self.display_message(f"File '{file_name}' copied to '{dest_folder}'")
+
+                    self.display_message("Files copied to the local repository folder.")
+        except Exception as e:
+            self.display_message(f"Error copying files: {e}")
+
+
+    def git_add_files(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Open a file dialog to select files or directories to add
+            files, _ = QFileDialog.getOpenFileNames(self, "Select Files or Directories to Add", self.repo_path)
+
+            if files:
+                # Prompt the user to select a destination folder within the local repo
+                dest_folder = QFileDialog.getExistingDirectory(self, "Select Destination Folder in Local Repo")
+                
+                if dest_folder:
+                    for file_path in files:
+                        file_name = os.path.basename(file_path)
+                        dest_path = os.path.join(dest_folder, file_name)
+                        shutil.copy(file_path, dest_path)
+                        self.display_message(f"File '{file_name}' copied to '{dest_folder}'")
+
+                    # Use GitPython to stage the copied files for commit
+                    repo = Repo(self.repo_path)
+                    repo.index.add([os.path.relpath(dest_path, self.repo_path) for dest_path in files])
+                    self.display_message("Files added to staging area successfully.")
+
+                    # Display the repository contents after adding files
+                    self.view_repository_contents()
+
+        except Exception as e:
+            self.display_message(f"Error adding files: {e}")
+
+
+
+    def git_add(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        # Open a file dialog to select files for Git Add
+        files, _ = QFileDialog.getOpenFileNames(self, "Select Files for Git Add", self.repo_path)
+
+        if not files:
+            self.display_message("No files selected for Git Add.")
+            return
+
+        try:
+            # Stage the selected files for Git Add
+            subprocess.run(['git', 'add'] + files, cwd=self.repo_path, check=True, text=True)
+
+            # Display the names of the files that were staged
+            self.display_message(f"Files staged for Git Add: {', '.join(files)}")
+        except subprocess.CalledProcessError as e:
+            self.display_message(f"Error staging files for Git Add: {e}")
+
+
+    def git_commit_staged_changes(self, commit_message):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        if not commit_message:
+            self.display_message("Please enter a commit message.")
+            return
+
+        try:
+            # Use Git to commit the staged changes with the specified message
+            subprocess.run(['git', 'commit', '-m', commit_message], cwd=self.repo_path, check=True, text=True)
+            self.display_message("Changes committed successfully.")
+
+            # Display the repository contents after the commit
+            self.view_repository_contents()
+        except subprocess.CalledProcessError as e:
+            self.display_message(f"Error committing changes: {e}")
+
+
+
+
+
+
+    def select_file_to_stage(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        # Open a file dialog to select a file to stage for commit
+        file_to_stage, _ = QFileDialog.getOpenFileName(self, "Select File to Stage for Commit", self.repo_path)
+
+        if file_to_stage:
+            try:
+                # Stage the specified file for commit
+                subprocess.run(['git', 'add', file_to_stage], cwd=self.repo_path, check=True, text=True)
+                self.display_message(f"File '{file_to_stage}' staged for commit successfully.")
+            except subprocess.CalledProcessError as e:
+                self.display_message(f"Error staging the file: {e}")
+
+
+
+    def fetch_repositories(self):
+        username = self.username_input.text()
+        self.github_token = self.token_input.text()  # Use class attribute github_token
+
+        # Save GitHub token when it's updated
+        self.save_github_token()
+
+        if not username or not self.github_token:
+            QMessageBox.warning(self, "Warning", "Please enter your GitHub username and Personal Access Token (PAT).")
+            return
+
+        # Create a session and authenticate with GitHub using the token
+        session = requests.Session()
+        session.headers["Authorization"] = f"token {self.github_token}"  # Use self.github_token
+
+        # Fetch the list of user repositories
+        response = session.get(f"https://api.github.com/users/{username}/repos")
+
+        if response.status_code == 200:
+            repositories = response.json()
+            if repositories:
+                repo_names = [repo["name"] for repo in repositories]
+                self.repo_combo_box.clear()
+                self.repo_combo_box.addItems(repo_names)
+                self.repo_combo_box.setEnabled(True)
+                self.repo_details_browser.setPlainText("Select a repository from the list above.")
+            else:
+                self.repo_details_browser.setPlainText("No repositories found.")
+        else:
+            self.repo_details_browser.setPlainText(f"Failed to fetch repositories. Status code: {response.status_code}")
+
+        # ... Rest of the code remains the same ...
+
+    def select_repository(self):
+        # Open a file dialog to select or specify the repository path
+        repo_path = QFileDialog.getExistingDirectory(self, "Select or Specify Repository Path")
+        if repo_path:
+            self.repo_path = repo_path
+            self.display_message(f"Selected repository: {repo_path}")
+
+    def select_commit_files(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        # Open a file dialog to select files or directories for commit
+        files, _ = QFileDialog.getOpenFileNames(self, "Select Files or Directories to Commit", self.repo_path)
+
+        if files:
+            try:
+                self.commit_files = files  # Update the commit_files list with selected files
+                self.display_message(f"Selected files/directories for commit: {', '.join(self.commit_files)}")
+            except Exception as e:
+                self.display_message(f"Error selecting files for commit: {e}")
+
+    def select_local_repo_folder(self):
+        # Open a folder dialog to select the local repository folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Local Repository Folder")
+
+        if folder:
+            self.repo_path = folder
+            self.display_message(f"Selected local repository folder: {folder}")
+
+
+
+    def push_changes(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Use the stored username and PAT
+            username = self.github_username
+            token = self.github_token
+
+            # Rest of the push_changes function...
+        except Exception as e:
+            self.display_message(f"Error pushing changes: {e}")
+
+
+
+    def create_repository(self):
+        username = self.username_input.text()
+        token = self.token_input.text()
+
+        if not username or not token:
+            QMessageBox.warning(self, "Warning", "Please enter your GitHub username and Personal Access Token (PAT).")
+            return
+
+        repo_name, ok = QFileDialog.getText(self, "Create Repository", "Enter the repository name:")
+        if ok and repo_name:
+            session = requests.Session()
+            session.headers["Authorization"] = f"token {token}"
+
+            # Create the repository
+            response = session.post(f"https://api.github.com/user/repos", json={"name": repo_name})
+
+            if response.status_code == 201:
+                self.display_message(f"Repository '{repo_name}' created successfully.")
+            else:
+                self.display_message(f"Failed to create repository. Status code: {response.status_code}")
+
+    def clone_repository(self):
+        username = self.username_input.text()
+        token = self.token_input.text()
+        repo_name = self.repo_combo_box.currentText()
+
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        local_dir = QFileDialog.getExistingDirectory(self, "Select Directory to Clone Repository")
+
+        if local_dir:
+            try:
+                session = requests.Session()
+                session.headers["Authorization"] = f"token {token}"
+
+                response = session.get(f"https://api.github.com/repos/{username}/{repo_name}")
+
+                if response.status_code == 200:
+                    repo_info = response.json()
+                    repo_url = repo_info["clone_url"]
+
+                    os.system(f"git clone {repo_url} {os.path.join(local_dir, repo_name)}")
+                    self.display_message(f"Repository '{repo_name}' cloned successfully.")
+                else:
+                    self.display_message(f"Failed to fetch repository information. Status code: {response.status_code}")
+            except Exception as e:
+                self.display_message(f"Error cloning repository: {e}")
+
+    def pull_changes(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            repo = git.Repo(self.repo_path)
+            origin = repo.remotes.origin
+            origin.pull()
+            self.display_message("Changes pulled from remote successfully.")
+        except Exception as e:
+            self.display_message(f"Error pulling changes: {e}")
+
+    def view_repository_contents(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            repo = git.Repo(self.repo_path)
+            contents = repo.git.ls_files().split('\n')  # List the files in the repository
+
+            if contents:
+                content_text = "\n".join(contents)
+                self.repo_details_browser.setPlainText(content_text)
+            else:
+                self.repo_details_browser.setPlainText("No contents found in the repository.")
+        except Exception as e:
+            self.display_message(f"Error fetching repository contents: {e}")
+
+    def display_message(self, message):
+        self.repo_details_browser.append(message)
+
+    # Remove the second commit_changes function for the "Commit" button
+
+    def commit_changes(self, commit_message=None):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        if not self.commit_files:
+            self.display_message("No changes added to commit. Use 'git add' to stage changes.")
+            return
+
+        try:
+            # Stage the selected files for commit
+            subprocess.run(['git', 'add'] + self.commit_files, cwd=self.repo_path, check=True, text=True)
+
+            # Use the provided commit message or a default message
+            if commit_message is None:
+                program_name = os.path.basename(sys.argv[0])  # Get the program name
+                commit_message = f"Changes from {program_name}"
+
+            subprocess.run(['git', 'commit', '-m', commit_message], cwd=self.repo_path, check=True, text=True)
+            self.display_message("Changes committed successfully.")
+
+            # Display the repository contents after the commit
+            self.view_repository_contents()
+        except subprocess.CalledProcessError as e:
+            self.display_message(f"Error committing changes: {e}")
+
+
+    def commit_changes_with_message(self):
+        commit_message, ok = QInputDialog.getText(self, "Commit Message", "Enter your commit message:")
+
+        if ok:
+            try:
+                # Use subprocess to execute the 'git commit -m' command with the provided message
+                subprocess.run(['git', 'commit', '-m', commit_message], cwd=self.repo_path, check=True, text=True)
+
+                self.display_message("Changes committed successfully.")
+                
+                # Automatically scroll down to show the commit message
+                self.repo_details_browser.ensureCursorVisible()
+
+                # Display the repository contents after the commit
+                self.view_repository_contents()
+            except subprocess.CalledProcessError as e:
+                self.display_message(f"Error committing changes: {e}")
+    
+
+    def repo_has_changes_to_commit(self):
+        try:
+            # Check if there are staged changes in the repository
+            result = subprocess.run(['git', 'diff', '--cached', '--exit-code'], cwd=self.repo_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            if result.returncode == 0:
+                return False  # No staged changes
+            else:
+                return True  # There are staged changes
+        except subprocess.CalledProcessError as e:
+            # Handle any potential errors
+            self.display_message(f"Error checking for staged changes: {e}")
+            return False
+
+
+
+
+
+    def push_changes(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Use GitPython to push changes to the remote repository
+            repo = Repo(self.repo_path)
+            origin = repo.remote(name='origin')
+            origin.push()
+            self.display_message("Changes pushed to remote successfully.")
+
+            # Automatically scroll down to show the push message
+            self.repo_details_browser.ensureCursorVisible()
+
+            # Display the repository contents after the push
+            self.view_repository_contents()
+        except Exception as e:
+            self.display_message(f"Error pushing changes: {e}")
+
+    def check_git_status(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Run 'git status' command to check the status of the repository
+            result = subprocess.run(['git', 'status'], cwd=self.repo_path, check=True, text=True, capture_output=True)
+
+            if result.returncode == 0:
+                # Command executed successfully
+                self.display_message(result.stdout)
+            else:
+                # Command execution failed
+                self.display_message(f"Error checking Git status:\n{result.stderr}")
+        except Exception as e:
+            self.display_message(f"Error checking Git status: {e}")
+
+
+    def init_git_repository(self):
+        if not self.repo_path:
+            self.display_message("Please select or specify a repository path first.")
+            return
+
+        try:
+            # Run 'git init' to initialize a Git repository in the selected folder
+            subprocess.run(['git', 'init'], cwd=self.repo_path, check=True, text=True)
+
+            self.display_message("Git repository initialized successfully.")
+        except subprocess.CalledProcessError as e:
+            self.display_message(f"Error initializing Git repository: {e}")
+
+    def save_github_token(self):
+        # Save the GitHub token to a JSON file
+        if self.github_token:
+            token_path = os.path.expanduser("~/Documents/github_token.json")
+            data = {"token": self.github_token}
+            with open(token_path, "w") as token_file:
+                json.dump(data, token_file)
+
+    def load_github_token(self):
+        # Load the GitHub token from a JSON file
+        token_path = os.path.expanduser("~/Documents/github_token.json")
+        if os.path.exists(token_path):
+            with open(token_path, "r") as token_file:
+                data = json.load(token_file)
+                self.github_token = data.get("token", "")
+                self.token_input.setText(self.github_token)
+
+
+
+def main():
+    app = QApplication(sys.argv)
+
+
+    
+    window = GitHubGitClient()
+    window.show()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()
