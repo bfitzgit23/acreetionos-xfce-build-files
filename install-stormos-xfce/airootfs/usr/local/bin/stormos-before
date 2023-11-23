@@ -6,7 +6,8 @@ echo "#################################"
 echo "Populate Core Team keys"
 echo "#################################"
 pacman-key --init
-pacman-key --populate
+pacman-key --populate archlinux
+pacman -Syy
 
 echo "Copy grub StormOS theme"
 echo "#################################"
