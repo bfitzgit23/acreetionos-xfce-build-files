@@ -29,7 +29,6 @@ rm -f /etc/sudoers.d/g_wheel
 rm -f /etc/polkit-1/rules.d/49-nopasswd_global.rules
 rm -f /etc/systemd/system/etc-pacman.d-gnupg.mount
 rm -f /etc/xdg/autostart/welcome.desktop
-rm /root/{.automated_script.sh,.zlogin}
 mv /etc/os-release /etc/lsb-release
 rm -rf /home/liveuser/
 
@@ -50,4 +49,4 @@ sed -i "s/autologin-user=liveuser/#autologin-user=/g" /etc/lightdm/lightdm.conf
 echo "#################################"
 echo "End stormos-final"
 echo "#################################"
-rm /usr/local/bin/xerolinux-final
+rm /usr/local/bin/stormos-final
