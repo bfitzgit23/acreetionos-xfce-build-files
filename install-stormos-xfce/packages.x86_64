@@ -444,6 +444,7 @@ kde-gtk-config
 plasma-desktop
 plasma-workspace
 kwin-effects-cube
+xsettingsd
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -455,7 +456,8 @@ libgtop
 
 cfs-zen-tweaks
 dxvk-bin
-dracula-gtk-gtheme
+dracula-gtk-theme
+kvantum-theme-dracula-git
 plasma5-themes-dracula-git
 gconf
 ttf-jetbrains-mono-nerd
