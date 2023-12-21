@@ -96,10 +96,4 @@ rm -rf /usr/share/backgrounds/gnome
 pacman -Sc --noconfirm
 pacman -Syu --noconfirm --needed
 
-####
-cp -af /usr/share/applications/Install-StormOS-CLI.desktop /home/liveuser/Desktop/Install-StormOS-CLI.desktop
-chown liveuser:liveuser /home/liveuser/Desktop/*.desktop
-chmod +x /home/liveuser/Desktop/*.desktop
-chown liveuser /home/liveuser/Desktop/*.desktop
-
 plymouth-set-default-theme stormos
