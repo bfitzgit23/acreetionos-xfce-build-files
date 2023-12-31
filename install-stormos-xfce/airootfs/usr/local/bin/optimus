@@ -33,9 +33,9 @@ class GPUSelector(QWidget):
         choice = self.gpu_combo.currentText()
 
         if choice == 'Integrated (Intel/AMD APU)':
-            command = ['sudo', 'supergfxctl', '-m', 'Integrated']
+            command = ['supergfxctl', '-m', 'Integrated']
         elif choice == 'Hybrid (Both)':
-            command = ['sudo', 'supergfxctl', '-m', 'Hybrid']
+            command = ['supergfxctl', '-m', 'Hybrid']
         else:
             QMessageBox.warning(self, 'Invalid Choice', 'Please select a valid GPU option.')
             return

@@ -77,7 +77,7 @@ parted
 partimage
 ppp
 pptpclient
-plymouth
+plymouth-git
 reflector
 reiserfsprogs
 rp-pppoe

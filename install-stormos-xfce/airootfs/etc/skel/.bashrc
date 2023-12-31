@@ -157,4 +157,6 @@ alias reflect="sudo reflector --verbose -l 20 --sort rate --save /etc/pacman.d/m
 alias gpgup="updpkgsums"
 alias reload="source ~/.bashrc"
 alias up-grub="sudo grub-mkconfig -o /boot/grub/grub.cfg"
+alias hybrid_mod="supergfxctl -m hybrid && systemctl start nvidia-persistenced.service"
+alias integrated_mode="systemctl stop nvidia-persistenced.service && supergfxctl -m integrated"
 neofetch
