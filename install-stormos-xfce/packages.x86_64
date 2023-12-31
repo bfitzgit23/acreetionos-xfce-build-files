@@ -36,6 +36,7 @@ gpart
 gpm
 gptfdisk
 grub
+grub-hooks
 haveged
 hdparm
 intel-ucode
@@ -55,6 +56,7 @@ man-pages
 mc
 mdadm
 memtest86+
+memtest86+-efi
 mkinitcpio
 mkinitcpio-archiso
 mkinitcpio-nfs-utils
@@ -299,7 +301,6 @@ perl-data-dump
 pkgconf
 polkit-gnome
 python-gobject
-plank
 reflector
 scrot
 samba
@@ -396,9 +397,6 @@ hplip
 splix
 system-config-printer
 
-## Language pack
-firefox-i18n-en-gb
-
 ## Xfce Specific
 xfce4
 thunar-archive-plugin
@@ -436,6 +434,7 @@ xfce4-wavelan-plugin
 xfce4-weather-plugin
 xfce4-whiskermenu-plugin
 xfce4-xkb-plugin
+xfce4-docklike-plugin
 
 ## kwin ##
 kwin

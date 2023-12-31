@@ -20,7 +20,7 @@ class GPUSelector(QWidget):
 
         self.gpu_combo = QComboBox()
         self.gpu_combo.addItem('Integrated (Intel/AMD APU)')
-        self.gpu_combo.addItem('Discrete (Nvidia)')
+        self.gpu_combo.addItem('Hybrid (Both)')
         layout.addWidget(self.gpu_combo)
 
         switch_button = QPushButton('Switch GPU')
@@ -33,9 +33,9 @@ class GPUSelector(QWidget):
         choice = self.gpu_combo.currentText()
 
         if choice == 'Integrated (Intel/AMD APU)':
-            command = ['sudo', 'envycontrol', '-s', 'hybrid']
-        elif choice == 'Discrete (Nvidia)':
-            command = ['sudo', 'envycontrol', '-s', 'nvidia', '--force-comp', '--coolbits', '24']
+            command = ['sudo', 'supergfxctl', '-m', 'Integrated']
+        elif choice == 'Hybrid (Both)':
+            command = ['sudo', 'supergfxctl', '-m', 'Hybrid']
         else:
             QMessageBox.warning(self, 'Invalid Choice', 'Please select a valid GPU option.')
             return
