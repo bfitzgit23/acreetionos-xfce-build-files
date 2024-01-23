@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import shutil
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QFileDialog, QAction, QVBoxLayout, QWidget, QGraphicsView, QGraphicsScene, QDialog, QGridLayout, QScrollArea, QMessageBox
+from PyQt5.QtGui import QPixmap, QPainter, QTransform
+from PyQt5.QtCore import Qt, QSize
+from PyQt5 import QtCore
+from PyQt5.QtCore import QFileInfo
+
+#!/usr/bin/env python3
+
+import sys
+import os
+import shutil
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QFileDialog, QAction, QVBoxLayout, QWidget, QGraphicsView, QGraphicsScene, QDialog, QGridLayout, QScrollArea, QMessageBox
+from PyQt5.QtGui import QPixmap, QPainter, QTransform
+from PyQt5.QtCore import Qt, QSize
+from PyQt5 import QtCore
+from PyQt5.QtCore import QFileInfo
+
+class ImageViewer(QMainWindow):
+    def __init__(self, image_path=None):
+        super().__init__()
+        self.image_paths = []  # Store image paths for navigation
+        self.current_index = 0  # Index of currently displayed image
+        self.scene = QGraphicsScene()  # Create a scene for displaying images
+        self.initUI()
+
+        if image_path:
+            self.image_paths.append(image_path)
+            self.current_index = 0
+            self.displayImage()
+
+    def initUI(self):
+        self.setWindowTitle('StormOS Image Viewer')
+        self.setGeometry(100, 100, 800, 600)
+
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignCenter)
+
+        self.graphics_view = QGraphicsView(self.scene)  # Set the scene for the QGraphicsView
+        self.graphics_view.setAlignment(Qt.AlignCenter)
+
+        self.info_label = QLabel(self)
+        self.info_label.setAlignment(Qt.AlignCenter)
+
+        self.central_layout = QVBoxLayout(self.central_widget)
+        self.central_layout.addWidget(self.graphics_view)
+        self.central_layout.addWidget(self.info_label)
+
+        # Rest of the code remains the same...
+
+
+        self.open_action = QAction("Open Image", self)
+        self.open_action.setShortcut("Ctrl+O")
+        self.open_action.triggered.connect(self.openImage)
+
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcut("Ctrl++")
+        self.zoom_in_action.triggered.connect(self.zoomIn)
+
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut("Ctrl+-")
+        self.zoom_out_action.triggered.connect(self.zoomOut)
+
+        self.fit_to_window_action = QAction("Fit to Window", self)
+        self.fit_to_window_action.setShortcut("Ctrl+F")
+        self.fit_to_window_action.triggered.connect(self.fitToWindow)
+
+        self.next_image_action = QAction("Next Image", self)
+        self.next_image_action.setShortcut("Right")
+        self.next_image_action.triggered.connect(self.nextImage)
+
+        self.prev_image_action = QAction("Previous Image", self)
+        self.prev_image_action.setShortcut("Left")
+        self.prev_image_action.triggered.connect(self.prevImage)
+
+        self.thumbnail_view_action = QAction("Thumbnail View", self)
+        self.thumbnail_view_action.setShortcut("T")
+        self.thumbnail_view_action.triggered.connect(self.toggleThumbnailView)
+
+        self.menu_bar = self.menuBar()
+        self.file_menu = self.menu_bar.addMenu("File")
+        self.file_menu.addAction(self.open_action)
+
+        self.view_menu = self.menu_bar.addMenu("View")
+        self.view_menu.addAction(self.zoom_in_action)
+        self.view_menu.addAction(self.zoom_out_action)
+        self.view_menu.addAction(self.fit_to_window_action)
+        self.view_menu.addAction(self.next_image_action)
+        self.view_menu.addAction(self.prev_image_action)
+        self.view_menu.addAction(self.thumbnail_view_action)
+
+        self.file_operations_menu = self.menu_bar.addMenu("File Operations")
+        self.save_as_action = QAction("Save As", self)
+        self.save_as_action.setShortcut("Ctrl+S")
+        self.save_as_action.triggered.connect(self.saveAs)
+        self.file_operations_menu.addAction(self.save_as_action)
+
+        self.delete_image_action = QAction("Delete Image", self)
+        self.delete_image_action.setShortcut("Delete")
+        self.delete_image_action.triggered.connect(self.deleteImage)
+        self.file_operations_menu.addAction(self.delete_image_action)
+
+        self.copy_image_action = QAction("Copy Image", self)
+        self.copy_image_action.setShortcut("Ctrl+C")
+        self.copy_image_action.triggered.connect(self.copyImage)
+        self.file_operations_menu.addAction(self.copy_image_action)
+
+        self.move_image_action = QAction("Move Image", self)
+        self.move_image_action.setShortcut("Ctrl+M")
+        self.move_image_action.triggered.connect(self.moveImage)
+        self.file_operations_menu.addAction(self.move_image_action)
+
+        self.rotation_menu = self.menu_bar.addMenu("Rotation")
+        self.rotate_clockwise_action = QAction("Rotate Clockwise", self)
+        self.rotate_clockwise_action.setShortcut("Ctrl+R")
+        self.rotate_clockwise_action.triggered.connect(self.rotateClockwise)
+        self.rotation_menu.addAction(self.rotate_clockwise_action)
+
+        self.rotate_counterclockwise_action = QAction("Rotate Counterclockwise", self)
+        self.rotate_counterclockwise_action.setShortcut("Ctrl+Shift+R")
+        self.rotate_counterclockwise_action.triggered.connect(self.rotateCounterclockwise)
+        self.rotation_menu.addAction(self.rotate_counterclockwise_action)
+
+        self.thumbnail_dialog = ThumbnailDialog(self.image_paths)
+        self.thumbnail_dialog.thumbnailClicked.connect(self.thumbnailClicked)
+
+    def openImage(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)", options=options)
+
+        if file_path:
+            self.image_paths.append(file_path)
+            self.current_index = len(self.image_paths) - 1
+            self.displayImageInfo()
+            self.displayImage()
+
+    def displayImage(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            file_path = self.image_paths[self.current_index]
+            pixmap = QPixmap(file_path)
+            if not pixmap.isNull():
+                self.scene.clear()
+                self.scene.addPixmap(pixmap)
+                self.graphics_view.setScene(self.scene)
+                self.setWindowTitle(f'Image Viewer - {file_path}')
+                self.displayImageInfo()
+
+    def displayImageInfo(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            file_path = self.image_paths[self.current_index]
+            file_info = QFileInfo(file_path)
+
+            if self.scene.items():
+                pixmap = self.scene.items()[0].pixmap()
+                size_str = self.formatFileSize(file_info.size())
+
+                image_info = f"Dimensions: {pixmap.width()}x{pixmap.height()} | File Size: {size_str}"
+                self.info_label.setText(image_info)
+                self.info_label.setVisible(True)
+            else:
+                self.info_label.setVisible(False)
+        else:
+            self.info_label.setVisible(False)
+
+    def formatFileSize(self, size):
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size < 1024.0:
+                break
+            size /= 1024.0
+        return "{:.2f} {}".format(size, unit)
+
+    def zoomIn(self):
+        render_hints = self.graphics_view.renderHints()
+        render_hints |= QPainter.SmoothPixmapTransform
+        render_hints |= QPainter.HighQualityAntialiasing
+
+        self.graphics_view.setRenderHints(render_hints)
+
+        self.graphics_view.scale(1.2, 1.2)
+
+    def zoomOut(self):
+        render_hints = self.graphics_view.renderHints()
+        render_hints |= QPainter.SmoothPixmapTransform
+        render_hints |= QPainter.HighQualityAntialiasing
+
+        self.graphics_view.setRenderHints(render_hints)
+
+        self.graphics_view.scale(1 / 1.2, 1 / 1.2)
+
+    def fitToWindow(self):
+        render_hints = self.graphics_view.renderHints()
+        render_hints |= QPainter.SmoothPixmapTransform
+        render_hints |= QPainter.HighQualityAntialiasing
+
+        self.graphics_view.setRenderHints(render_hints)
+
+        self.graphics_view.resetTransform()
+        self.graphics_view.setSceneRect(self.scene.itemsBoundingRect())
+        self.graphics_view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+
+    def nextImage(self):
+        if self.current_index < len(self.image_paths) - 1:
+            self.current_index += 1
+            self.displayImage()
+
+    def prevImage(self):
+        if self.current_index > 0:
+            self.current_index -= 1
+            self.displayImage()
+
+    def toggleThumbnailView(self):
+        self.thumbnail_dialog = ThumbnailDialog(self.image_paths)
+        self.thumbnail_dialog.thumbnailClicked.connect(self.thumbnailClicked)
+        self.thumbnail_dialog.show()
+
+    def thumbnailClicked(self, index):
+        self.current_index = index
+        self.displayImage()
+
+    def rotateClockwise(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            pixmap = QPixmap(self.image_paths[self.current_index])
+            pixmap = pixmap.transformed(QTransform().rotate(90))
+            pixmap.save(self.image_paths[self.current_index])
+            self.displayImage()
+
+    def rotateCounterclockwise(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            pixmap = QPixmap(self.image_paths[self.current_index])
+            pixmap = pixmap.transformed(QTransform().rotate(-90))
+            pixmap.save(self.image_paths[self.current_index])
+            self.displayImage()
+
+    def saveAs(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            options = QFileDialog.Options()
+            save_path, _ = QFileDialog.getSaveFileName(self, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)", options=options)
+            if save_path:
+                pixmap = QPixmap(self.image_paths[self.current_index])
+                pixmap.save(save_path)
+
+    def deleteImage(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            file_path = self.image_paths[self.current_index]
+            reply = QMessageBox.question(self, "Delete Image", f"Do you want to delete '{file_path}'?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                os.remove(file_path)
+                del self.image_paths[self.current_index]
+                self.current_index = max(0, self.current_index - 1)
+                self.displayImage()
+
+    def copyImage(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            file_path = self.image_paths[self.current_index]
+            options = QFileDialog.Options()
+            save_path, _ = QFileDialog.getSaveFileName(self, "Copy Image To", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)", options=options)
+            if save_path:
+                shutil.copyfile(file_path, save_path)
+
+    def moveImage(self):
+        if 0 <= self.current_index < len(self.image_paths):
+            file_path = self.image_paths[self.current_index]
+            options = QFileDialog.Options()
+            save_path, _ = QFileDialog.getSaveFileName(self, "Move Image To", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)", options=options)
+            if save_path:
+                shutil.move(file_path, save_path)
+                del self.image_paths[self.current_index]
+                self.current_index = max(0, self.current_index - 1)
+                self.displayImage()
+
+class ThumbnailDialog(QDialog):
+    thumbnailClicked = QtCore.pyqtSignal(int)
+
+    def __init__(self, image_paths):
+        super().__init__()
+        self.image_paths = image_paths
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Thumbnail View')
+        self.setGeometry(200, 200, 400, 300)
+
+        layout = QVBoxLayout(self)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+
+        thumbnail_widget = QWidget()
+        scroll_area.setWidget(thumbnail_widget)
+
+        thumbnail_layout = QGridLayout(thumbnail_widget)
+        thumbnail_widget.setLayout(thumbnail_layout)
+
+        for i, path in enumerate(self.image_paths):
+            thumbnail_label = QLabel(self)
+            pixmap = QPixmap(path)
+            pixmap = pixmap.scaled(QSize(100, 100), Qt.KeepAspectRatio)
+            thumbnail_label.setPixmap(pixmap)
+
+            thumbnail_label.mousePressEvent = lambda event, index=i: self.thumbnailClicked.emit(index)
+
+            thumbnail_layout.addWidget(thumbnail_label, i // 4, i % 4)
+
+        layout.addWidget(scroll_area)
+
+def main():
+    app = QApplication(sys.argv)
+    
+    if len(sys.argv) > 1:
+        image_path = sys.argv[1]
+        viewer = ImageViewer(image_path)
+    else:
+        viewer = ImageViewer()
+    
+    viewer.show()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()

@@ -15,10 +15,9 @@ airootfs_image_type="squashfs"
 airootfs_image_tool_options=('-comp' 'zstd' '-Xcompression-level' '15' '-b' '1M' )
 file_permissions=(
   ["/root"]="0:0:750"
-  ["/root/.automated_script.sh"]="0:0:777"
+  ["/root/.automated_script.sh"]="0:0:755"
   ["/usr/local/bin/"]="0:0:755"
-  ["/usr/bin/wgetm"]="0:0:777"
-  ["/etc/gshadow"]="0:0:400"
+  ["/usr/bin/wgetm"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
-  ["/usr/local/share/wm.sh"]=":0:0:755"
+  ["/etc/gshadow"]="0:0:400"
 )

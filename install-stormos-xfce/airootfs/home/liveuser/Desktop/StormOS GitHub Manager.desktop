@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=StormOS GitHub Manager
+Comment=
+Exec=/usr/local/bin/StormOS_Github_Git_Manager
+Icon=github
+Path=
+Terminal=false
+StartupNotify=false

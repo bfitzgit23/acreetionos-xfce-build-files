@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=StormOS Bookmarks Manager
+Comment=
+Exec=/usr/local/bin/bmqt
+Icon=bookmark-add
+Path=
+Terminal=false
+StartupNotify=false
