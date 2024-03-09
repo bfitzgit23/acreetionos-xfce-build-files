@@ -20,4 +20,5 @@ file_permissions=(
   ["/usr/bin/wgetm"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
+  ["/offline_installer/installer"]="0:0:755"
 )

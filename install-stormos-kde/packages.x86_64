@@ -164,7 +164,6 @@ vkd3d
 #lib32-vkd3d
 
 ## Network
-blueman
 bluez
 #bluez-firmware
 bluez-libs
@@ -182,7 +181,7 @@ whois
 #wpa_actiond
 #wpa_supplicant
 
-## LightDM Login Manager
+## Lightdm Login Manager
 lightdm
 lightdm-gtk-greeter
 
@@ -193,7 +192,6 @@ efitools
 encfs
 git
 laptop-detect
-lsb-release
 mkinitcpio-openswap
 mlocate
 pacman-mirrorlist
@@ -268,7 +266,6 @@ virtualbox-guest-utils
 
 ## Software #############################
 axel
-abiword
 autoconf
 automake
 chromium
@@ -282,7 +279,6 @@ git
 gnome-keyring
 gnome-disk-utility
 gamemode
-gimp
 gnumeric
 htop
 imagemagick
@@ -305,7 +301,6 @@ spice
 spice-gtk
 spice-protocol
 spice-vdagent
-thunderbird
 upower
 wget
 vlc
@@ -365,6 +360,8 @@ gtk3
 gtk-update-icon-cache
 #gtk-theme-switch2
 xcursor-vanilla-dmz
+tela-icon-theme-bin
+adw-gtk3
 
 ## Theme engine #############################
 qt5-base
@@ -394,13 +391,172 @@ splix
 system-config-printer
 
 ## kwin ##
+kde-gtk-config
+kwin-effects-cube
+kf6
+kde-system
+
+#######################################################
+###                 The Selections                  ###
+#######################################################
+
+### QT5/6 Selection
+### https://archlinux.org/groups/x86_64/qt5/
+
+qt5-3d
+qt5-base
+qt5-tools
+qt5-script
+qt5-gamepad
+qt5-wayland
+qt5-webview
+qt6-5compat
+qt5-location
+qt5-webengine
+qt5-x11extras
+qt5-webchannel
+qt5-websockets
+qt5-multimedia
+qt5-purchasing
+qt5-webglplugin
+qt5-networkauth
+qt5-declarative
+qt5-xmlpatterns
+qt5-connectivity
+qt5-imageformats
+qt5-translations
+qt5-remoteobjects
+qt5-quicktimeline
+qt5-quickcontrols
+qt5-quickcontrols2
+qt5-graphicaleffects
+
+### Plasma Selection
+### https://archlinux.org/groups/x86_64/plasma/
+
 kwin
+milou
+breeze
+breeze-icons
+oxygen
+drkonqi
+kwrited
+kgamma
+kscreen
+khotkeys
+kmenuedit
+bluedevil
+kpipewire
+plasma-nm
+plasma-pa
+plasma-sdk
+libkscreen
+breeze-gtk
+powerdevil
+kinfocenter
+flatpak-kcm
+kdecoration
+ksshaskpass
+kwallet-pam
+libksysguard
+plasma-vault
+ksystemstats
+kde-cli-tools
+oxygen-sounds
 systemsettings
 kde-gtk-config
+layer-shell-qt
 plasma-desktop
+polkit-kde-agent
 plasma-workspace
-kwin-effects-cube
-xsettingsd
+kdeplasma-addons
+kactivitymanagerd
+plasma-integration
+plasma-thunderbolt
+plasma-systemmonitor
+xdg-desktop-portal-kde
+plasma-browser-integration
+
+### KDE Network Selection
+### https://archlinux.org/groups/x86_64/kde-network/
+
+krdc
+krfb
+alligator
+kdeconnect
+kio-extras
+kio-gdrive
+konversation
+kio-zeroconf
+kdenetwork-filesharing
+signon-kwallet-extension
+
+### KDE Graphics Selection
+### https://archlinux.org/groups/x86_64/kde-graphics/
+
+okular
+kamera
+svgpart
+skanlite
+gwenview
+spectacle
+colord-kde
+kcolorchooser
+kimagemapeditor
+kdegraphics-thumbnailers
+
+### KDE Utilities Selection
+### https://archlinux.org/groups/x86_64/kde-utilities/
+
+ark
+kate
+kgpg
+kcalc
+kfind
+sweeper
+konsole
+kdialog
+yakuake
+kweather
+skanpage
+filelight
+kmousetool
+kcharselect
+markdownpart
+print-manager
+keditbookmarks
+kdebugsettings
+kwalletmanager
+
+### KDE Multimedia Selection
+### https://archlinux.org/groups/x86_64/kde-multimedia/
+
+k3b
+kamoso
+audiotube
+plasmatube
+audiocd-kio
+ffmpegthumbs
+
+### KDE Applications Selection
+### https://archlinux.org/groups/x86_64/kde-applications/
+
+cervisia
+akregator
+
+### KDE Wayland
+
+qt5-wayland
+egl-wayland
+kwayland-integration
+plasma-wayland-session
+plasma-wayland-protocols
+qt6-wayland
+
+### KDE-Pim Selection
+### https://archlinux.org/groups/x86_64/kde-pim/
+
+merkuro
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -445,10 +601,10 @@ zensu
 ## Calamares Installer
 python-urllib3
 plasma-framework5
-stormos-xfce-config
-stormos-calamares-xfce-config
+stormos-kde-config
+stormos-calamares-kde-config
 #stormos-calamares
-calamares-app
+calamares
 kio5
 ki18n5
 solid5

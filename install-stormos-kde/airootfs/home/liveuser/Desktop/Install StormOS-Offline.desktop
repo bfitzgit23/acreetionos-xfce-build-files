@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install StormOS-Offline
+Comment=
+Exec=sudo konsole -e /offline_installer/installer
+Icon=/usr/share/pixmaps/stormos/menubutton.png
+Path=
+Terminal=true
+StartupNotify=false

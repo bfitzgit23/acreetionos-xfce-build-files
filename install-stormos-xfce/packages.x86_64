@@ -144,7 +144,6 @@ libwacom
 
 # video drivers
 xf86-video-fbdev
-xf86-video-openchrome
 xf86-video-vesa
 xf86-video-dummy
 xf86-video-vmware
@@ -182,7 +181,7 @@ whois
 #wpa_actiond
 #wpa_supplicant
 
-## LightDM Login Manager
+## Lightdm Login Manager
 lightdm
 lightdm-gtk-greeter
 
@@ -193,7 +192,6 @@ efitools
 encfs
 git
 laptop-detect
-lsb-release
 mkinitcpio-openswap
 mlocate
 pacman-mirrorlist
@@ -267,7 +265,6 @@ virtualbox-guest-utils
 
 ## Software #############################
 axel
-abiword
 autoconf
 automake
 chromium
@@ -282,8 +279,6 @@ git
 gnome-keyring
 gnome-disk-utility
 gamemode
-gimp
-gnumeric
 htop
 imagemagick
 lib32-gamemode
@@ -297,6 +292,7 @@ pacman-contrib
 perl-data-dump
 pkgconf
 polkit-gnome
+plank
 python-gobject
 reflector
 scrot
@@ -306,7 +302,6 @@ spice
 spice-gtk
 spice-protocol
 spice-vdagent
-thunderbird
 upower
 wget
 vlc
@@ -366,6 +361,8 @@ gtk3
 gtk-update-icon-cache
 #gtk-theme-switch2
 xcursor-vanilla-dmz
+adw-gtk3
+tela-icon-theme-bin
 
 ## Theme engine #############################
 qt5-base
@@ -440,11 +437,11 @@ libgnome-keyring
 gtk-doc
 libgtop
 
+compiz-easy-patch
 dxvk-bin
 gconf
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
-kwin-effects-cube
 mintstick-git
 mkinitcpio-openswap
 mission-center
@@ -480,9 +477,9 @@ plasma-framework5
 stormos-xfce-config
 stormos-calamares-xfce-config
 #stormos-calamares
-calamares-app
+calamares
 kio5
-ki18n5
+ki18n
 solid5
 xmlto
 ckbcomp

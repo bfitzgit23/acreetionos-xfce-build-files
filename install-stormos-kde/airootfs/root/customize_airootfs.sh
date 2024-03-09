@@ -37,6 +37,8 @@ cp -af /usr/share/applications/calamares.desktop /home/liveuser/Desktop/calamare
 chown liveuser:liveuser /home/liveuser/Desktop/calamares.desktop
 chmod +x /home/liveuser/Desktop/calamares.desktop
 
+chown liveuser:liveuser /home/liveuser/Desktop/*.desktop
+
 chown liveuser /home/liveuser/Desktop
 
 systemctl enable haveged
@@ -89,8 +91,9 @@ LC_ALL=C xdg-user-dirs-update --force
 pacman -Sc --noconfirm
 pacman -Syu --noconfirm --needed
 
-plymouth-set-default-theme stormos
-
-
-## neofetch
+####
 cp /usr/local/bin/neofetch /usr/bin/neofetch
+
+chown -R liveuser:liveuser /tmp
+
+plymouth-set-default-theme stormos

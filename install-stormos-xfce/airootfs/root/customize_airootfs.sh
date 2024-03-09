@@ -37,6 +37,8 @@ cp -af /usr/share/applications/calamares.desktop /home/liveuser/Desktop/calamare
 chown liveuser:liveuser /home/liveuser/Desktop/calamares.desktop
 chmod +x /home/liveuser/Desktop/calamares.desktop
 
+chown liveuser:liveuser /home/liveuser/Desktop/*.desktop
+
 chown liveuser /home/liveuser/Desktop
 
 systemctl enable haveged
@@ -82,15 +84,22 @@ pacman-key --populate archlinux
 # Stop lightdm user from expiring
 chage -E -1 lightdm
 
+pacman -Rs xfwm4-themes --noconfirm
+
 LC_ALL=C xdg-user-dirs-update --force
+
+rm -rf /usr/share/backgrounds/xfce
+rm -rf /usr/share/backgrounds/gnome
+
 
 ####
 
 pacman -Sc --noconfirm
 pacman -Syu --noconfirm --needed
 
-plymouth-set-default-theme stormos
-
-
-## neofetch
+####
 cp /usr/local/bin/neofetch /usr/bin/neofetch
+
+chown -R liveuser:liveuser /tmp
+
+plymouth-set-default-theme stormos
