@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=stormos_mpv_player
+Comment=a custom online video player
+Exec=/usr/bin/StormOS_Mpv_Player
+Icon=multimedia-video-player
+Path=
+Terminal=false
+StartupNotify=false
