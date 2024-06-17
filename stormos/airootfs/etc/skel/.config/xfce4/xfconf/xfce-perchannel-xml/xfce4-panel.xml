@@ -41,6 +41,7 @@
         <value type="double" value="0.66329966329966328"/>
       </property>
     </property>
+    <property name="dark-mode" type="bool" value="false"/>
   </property>
   <property name="plugins" type="empty">
     <property name="plugin-2" type="string" value="tasklist">
@@ -69,6 +70,8 @@
         <value type="string" value="networkmanager applet"/>
       </property>
       <property name="known-items" type="array">
+        <value type="string" value="remmina-icon"/>
+        <value type="string" value="zoom"/>
         <value type="string" value="vlc"/>
         <value type="string" value="screen-recorder-indicator"/>
         <value type="string" value="chrome_status_icon_1"/>
@@ -145,16 +148,16 @@
       <property name="hover-switch-category" type="bool" value="true"/>
       <property name="button-icon" type="string" value="storm os"/>
       <property name="recent" type="array">
-        <value type="string" value="xfce-settings-manager.desktop"/>
-        <value type="string" value="mpv.desktop"/>
-        <value type="string" value="stormos_mpv_player.desktop"/>
-        <value type="string" value="stormos_video_recorder.desktop"/>
-        <value type="string" value="launchpad.desktop"/>
-        <value type="string" value="steam-native.desktop"/>
-        <value type="string" value="x2goclient.desktop"/>
-        <value type="string" value="vesktop.desktop"/>
+        <value type="string" value="xfce-wmtweaks-settings.desktop"/>
+        <value type="string" value="xfce-wm-settings.desktop"/>
+        <value type="string" value="xfce-ui-settings.desktop"/>
+        <value type="string" value="org.gnome.Boxes.desktop"/>
         <value type="string" value="xfce4-terminal.desktop"/>
-        <value type="string" value="thunar.desktop"/>
+        <value type="string" value="x2goclient.desktop"/>
+        <value type="string" value="org.remmina.Remmina.desktop"/>
+        <value type="string" value="chromium.desktop"/>
+        <value type="string" value="xed.desktop"/>
+        <value type="string" value="vesktop.desktop"/>
       </property>
     </property>
     <property name="plugin-15" type="string" value="separator">

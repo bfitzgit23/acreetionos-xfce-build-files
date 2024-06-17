@@ -16,6 +16,7 @@
       <value type="string" value="notify-send"/>
       <value type="string" value="nw"/>
       <value type="string" value="org.freedesktop.network-manager-applet"/>
+      <value type="string" value="org.gnome.Boxes"/>
       <value type="string" value="vesktop"/>
       <value type="string" value="vlc"/>
       <value type="string" value="xfce4-settings-helper"/>
