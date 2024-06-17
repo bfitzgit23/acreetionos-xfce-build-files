@@ -29,6 +29,8 @@ rm -rf $HOME/liveuser/Desktop/calamares.desktop
 rm -rf $HOME/.config/autostart/calamares.desktop
 rm -rf $HOME/.config/autostart/NetworkManager.desktop
 rm /usr/share/applications/calamares.desktop
+rm /usr/share/applications/abif.desktop
+rm $HOME/liveuser/Desktop/abif.desktop
 
 pacman-key --init
 pacman-key --populate archlinux

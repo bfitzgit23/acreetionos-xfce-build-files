@@ -3,6 +3,7 @@
 alsa-utils
 amd-ucode
 arch-install-scripts
+archinstall
 archlinux-keyring
 b43-fwcutter
 base
@@ -156,6 +157,14 @@ opencl-clover-mesa
 opencl-rusticl-mesa
 lib32-mesa-libgl
 open-vm-tools
+nvidia-dkms
+nvidia-utils
+lib32-nvidia-utils
+nvidia-settings
+opencl-nvidia
+libxnvctrl
+libva-nvidia-driver
+lib32-opencl-nvidia
 
 # Radeon
 vulkan-radeon
@@ -184,7 +193,7 @@ whois
 
 ## Lightdm Login Manager
 lightdm
-lightdm-slick-greeter
+lightdm-gtk-greeter
 
 ## Common #############################
 bash-completion
@@ -219,6 +228,7 @@ gst-plugins-bad
 gst-plugins-base
 gst-plugins-good
 gst-plugins-ugly
+gst-plugin-gtk
 gstreamer-vaapi
 libcdio
 libdvdcss
@@ -249,7 +259,7 @@ ttf-ubuntu-font-family
 terminus-font
 ttf-joypixels
 ttf-font-awesome
-asian-fonts
+#asian-fonts
 ttf-fira-code
 otf-libertinus
 tex-gyre-fonts
@@ -268,6 +278,7 @@ virtualbox-guest-utils
 axel
 autoconf
 automake
+chromium
 dialog
 ffmpeg
 flac
@@ -282,7 +293,9 @@ htop
 imagemagick
 lib32-gamemode
 lame
-libreoffice-fresh
+libappindicator-gtk2
+libappindicator-gtk3
+mpv
 ntp
 neofetch
 numlockx
@@ -312,6 +325,7 @@ python-sphinx_rtd_theme
 cpio
 yt-dlp
 mcfly
+xrectsel
 
 ## Xdg Utilities #############################
 xdg-utils
@@ -385,13 +399,10 @@ hplip
 splix
 system-config-printer
 
-## Budgie
-budgie
-terminator
-#onlyoffice-bin
-peazip
+## xfce
 leafpad
-terminator
+xfce4
+xfce4-goodies
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -401,10 +412,9 @@ libgnome-keyring
 gtk-doc
 libgtop
 
-bash-prompt-git
+adw-gtk3
 dxvk-bin
 etcher-bin
-floorp-bin
 gconf
 localsend-bin
 lohit-fonts
@@ -415,17 +425,6 @@ oh-my-bash-git
 qt6gtk2
 pamac-aur
 preload
-python-libretranslate-git
-python-translate
-python-speechrecognition
-python-pyqt5-webkit
-python-pip
-python-pyqt5-webengine
-python-jq
-python-gtts
-python-openpyxl
-python-xlsxwriter
-python-git-python
 stormos-grub-theme
 stormos-conf
 ttf-ms-fonts
@@ -435,10 +434,8 @@ zensu
 
 ## Calamares Installer
 python-urllib3
+python-mpv
 plasma-framework5
-stormos-budgie-config
-stormos-calamares--config
-#stormos-calamares
 calamares-app
 kio5
 ki18n

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="StormOS_XFCE"
-iso_label="StormOS_XFCE_$(date +%Y%m)"
-iso_publisher="StormOS <https://www.storm-os.godaddysites.com>"
+iso_name="StormOS"
+iso_label="StormOS_$(date +%Y%m)"
+iso_publisher="StormOS <https://www.storm-os.com>"
 iso_application="StormOS install medium"
 iso_version="$(date +%Y.%m.%d)"
 install_dir="arch"
@@ -20,5 +20,4 @@ file_permissions=(
   ["/usr/bin/wgetm"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
-  ["/abif-master/abif"]="0:0:755"
 )
