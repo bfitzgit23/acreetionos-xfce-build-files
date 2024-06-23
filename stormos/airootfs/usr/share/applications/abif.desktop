@@ -2,7 +2,7 @@
 Name=Install StormOS (CLI)
 Comment=Command Line Installer For StormOS
 Exec=sudo xfce4-terminal -e /abif-master/abif
-Icon=archcraft-red
+Icon=storm os.png
 Type=Application
 Categories=System;
 Terminal=true
