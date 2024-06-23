@@ -23,12 +23,12 @@ rm -r /etc/initcpio
 echo "FONT=ter-p16n" >> /etc/vconsole.conf
 
 rm -rf /usr/share/calamares
-rm -rf /home/liveuser/Desktop/calamares.desktop
+rm -rf $HOME/Desktop/calamares.desktop
+rm -rf $HOME/Desktop/abif.desktop
 rm -rf $HOME/.config/autostart/calamares.desktop
 rm -rf $HOME/.config/autostart/NetworkManager.desktop
 rm /usr/share/applications/calamares.desktop
 rm /usr/share/applications/abif.desktop
-rm  /home/liveuser/Desktop/abif.desktop
 
 pacman-key --init
 pacman-key --populate archlinux
