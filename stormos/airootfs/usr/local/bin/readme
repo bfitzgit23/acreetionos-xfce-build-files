@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
-## Copyright (C) 2020-2021 DarkXero AkA TechXero <info@techxero.com>
 ## Everyone is permitted to copy and distribute copies of this file under GNU-GPL3
 
-## About XeroLinux
+## About StormOS
 
 yad --title "Welcome To StormOS" --image='$HOME/stormos.png'  \
 	--about \
