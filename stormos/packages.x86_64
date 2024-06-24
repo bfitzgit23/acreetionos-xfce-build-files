@@ -102,7 +102,9 @@ wireless_tools
 wipe
 wpa_supplicant
 wvdial
+wmctrl
 xfsprogs
+xrectsel
 xl2tpd
 yad
 
