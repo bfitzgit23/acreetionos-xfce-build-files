@@ -52,4 +52,3 @@ plymouth-set-default-theme stormos
 
 # Remove the script itself
 rm "$0"
-rm /usr/local/bin/postinstall.sh
