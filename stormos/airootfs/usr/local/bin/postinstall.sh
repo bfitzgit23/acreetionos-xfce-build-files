@@ -22,11 +22,26 @@ rm -r /etc/initcpio
 
 echo "FONT=ter-p16n" >> /etc/vconsole.conf
 
+# Get the actual home directory of the real user (not root)
+REAL_HOME=$(getent passwd $(logname) | cut -d: -f6)
+
 rm -rf /usr/share/calamares
-rm -rf "$HOME/Desktop/calamares.desktop"
-rm -rf "$HOME/Desktop/abif.desktop"
-rm -rf "$HOME/.config/autostart/calamares.desktop"
-rm -rf "$HOME/.config/autostart/NetworkManager.desktop"
+#!/bin/bash -e
+
+# ... [previous parts of the script remain unchanged]
+
+# Get the actual home directory of the real user (not root)
+REAL_HOME=$(getent passwd $(logname) | cut -d: -f6)
+
+# Remove desktop files
+rm -rf "${REAL_HOME}/Desktop/calamares.desktop"
+rm -rf "${REAL_HOME}/Desktop/abif.desktop"
+
+# Remove autostart files
+rm -rf "${REAL_HOME}/.config/autostart/calamares.desktop"
+rm -rf "${REAL_HOME}/.config/autostart/NetworkManager.desktop"
+
+# ... [rest of the script remains unchanged]
 rm /usr/share/applications/calamares.desktop
 rm /usr/share/applications/abif.desktop
 
@@ -35,5 +50,6 @@ pacman-key --populate archlinux
 
 plymouth-set-default-theme stormos
 
-# Continue cleanup
+# Remove the script itself
+rm "$0"
 rm /usr/local/bin/postinstall.sh
