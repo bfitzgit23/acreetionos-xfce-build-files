@@ -82,7 +82,7 @@ class ScreenRecorder(Gtk.Window):
         self.is_camera_on_top = False
         self.is_webcam_overlay = False  # New variable for webcam overlay
         self.webcam_position = "top-right"  # Default position
-
+        self.webcam_resolution = "640x480"  # Default webcam resolution
         self.is_journal_mode = False  # Initialize journaling mode
         self.is_keep_mode = False  # Add missing initialization
 
@@ -90,6 +90,10 @@ class ScreenRecorder(Gtk.Window):
         self.timer_seconds = 0
         self.timer_thread = None
         self.timer_completed = False
+
+
+
+
 
         atexit.register(self.cleanup_on_exit)
 
@@ -231,8 +235,9 @@ class ScreenRecorder(Gtk.Window):
         settings_grid.attach(self.select_custom_region_button, 1, 10, 1, 1)
 
         self.journaling_mode_checkbox = Gtk.CheckButton(label="Journaling Mode")
-        settings_grid.attach(self.journaling_mode_checkbox, 1, 10, 1, 1)
+        settings_grid.attach(self.journaling_mode_checkbox, 1, 11, 1, 1)
         self.journaling_mode_checkbox.connect("toggled", self.on_journaling_mode_toggled)
+
 
         # Timer configuration
         self.timer_checkbox = Gtk.CheckButton(label="Enable Timer")
@@ -307,10 +312,18 @@ class ScreenRecorder(Gtk.Window):
         self.play_recent_button.connect("clicked", self.open_recent_recording)
         controls_camera_streaming_grid.attach(self.play_recent_button, 0, 3, 1, 1)
 
+
         self.recent_recording_info_label = Gtk.Label(label="No recent recording")
         self.recent_recording_info_label.set_justify(Gtk.Justification.CENTER)
         self.recent_recording_info_label.set_halign(Gtk.Align.CENTER)
         controls_camera_streaming_grid.attach(self.recent_recording_info_label, 1, 3, 1, 1)
+
+
+        # Add the recent recordings label in the Control and Streaming tab
+        #self.recent_recordings_label_controls = Gtk.Label(label="Recent Recordings:\nNone")
+        #controls_camera_streaming_grid.attach(self.recent_recordings_label_controls, 0, 3, 2, 1)
+
+
 
         self.file_size_label = Gtk.Label(label="")
         self.file_size_label.set_justify(Gtk.Justification.CENTER)
@@ -360,11 +373,11 @@ class ScreenRecorder(Gtk.Window):
         self.webcam_overlay_checkbox.connect("toggled", self.on_webcam_overlay_toggled)
 
         # Add webcam position selection
+        self.webcam_positions = ["top-left", "top-right", "bottom-left", "bottom-right", "center"]
         self.webcam_position_label = Gtk.Label(label="Select Webcam Position:")
         controls_camera_streaming_grid.attach(self.webcam_position_label, 0, 10, 1, 1)
         self.webcam_position_combo = Gtk.ComboBoxText()
-        webcam_positions = ["top-left", "top-right", "bottom-left", "bottom-right"]
-        for position in webcam_positions:
+        for position in self.webcam_positions:
             self.webcam_position_combo.append_text(position)
         self.webcam_position_combo.set_active(1)  # Default to top-right
         self.webcam_position_combo.connect("changed", self.on_combobox_changed)
@@ -385,6 +398,10 @@ class ScreenRecorder(Gtk.Window):
         controls_camera_streaming_grid.attach(self.streaming_key_label, 0, 12, 1, 1)
         self.streaming_key_entry = Gtk.Entry()
         controls_camera_streaming_grid.attach(self.streaming_key_entry, 1, 12, 1, 1)
+
+
+
+
 
         notebook.append_page(controls_camera_streaming_grid, Gtk.Label(label="Controls & Streaming"))
 
@@ -419,6 +436,11 @@ class ScreenRecorder(Gtk.Window):
         self.update_tray_tooltip()  # Add this line to initialize the tooltip with the current settings
 
 
+    def on_combobox_changed(self, combo):
+        self.update_tray_tooltip()
+
+
+
 
 
     def update_recent_recording_info_label(self):
@@ -431,7 +453,11 @@ class ScreenRecorder(Gtk.Window):
                 self.recent_recording_info_label.set_text("Recent recording file not found")
         else:
             self.recent_recording_info_label.set_text("No recent recording")
-        
+
+
+
+
+
 
     def on_window_delete_event(self, widget, event):
         self.hide()
@@ -453,6 +479,7 @@ class ScreenRecorder(Gtk.Window):
         try:
             output = subprocess.check_output(['pactl', 'list', 'sources']).decode('utf-8')
             inputs = re.findall(r'Name: (.+)', output)
+            logging.debug(f"Available audio inputs: {inputs}")
             return inputs
         except subprocess.CalledProcessError as e:
             logging.error(f"Error getting available audio inputs: {e}")
@@ -535,20 +562,24 @@ class ScreenRecorder(Gtk.Window):
 
 
     def start_recording(self, widget):
-        logging.debug("Start recording function called")
         if not self.is_recording:
-            logging.debug("Not currently recording, proceeding with setup")
+            logging.debug("Record button clicked, starting recording...")
 
+            # Disable record buttons
             self.settings_record_button.set_sensitive(False)
             self.controls_record_button.set_sensitive(False)
             if hasattr(self, 'tray_record_item'):
                 self.tray_record_item.set_sensitive(False)
 
+            logging.debug(f"Settings record button sensitivity: {self.settings_record_button.get_sensitive()}")
+            logging.debug(f"Controls record button sensitivity: {self.controls_record_button.get_sensitive()}")
+
             self.is_recording = True
             self.start_time = time.time()
 
+            # Get recording settings
             selected_size = self.recording_size_combo.get_active_text()
-            selected_output_format = self.output_format_combo.get_active_text()
+            selected_output_format = ["mkv", "mp4", "webm"][self.output_format_combo.get_active()]
             selected_recording_area = self.recording_areas[self.recording_area_combo.get_active()]
             selected_video_codec = self.video_codecs[self.video_codec_combo.get_active()]
             selected_audio_codec = self.audio_codecs[self.audio_codec_combo.get_active()]
@@ -567,6 +598,7 @@ class ScreenRecorder(Gtk.Window):
                 self.status_label.set_text("Error: Invalid recording size.")
                 return
 
+            # Prepare output filename
             timestamp = time.strftime("%m-%d-%Y_%I-%M-%S%p")
             filename_prefix = "Journal" if self.is_journal_mode else "recording"
             if self.is_keep_mode:
@@ -575,46 +607,22 @@ class ScreenRecorder(Gtk.Window):
 
             os.makedirs(os.path.dirname(self.output_filename), exist_ok=True)
 
+            # Prepare audio inputs
             primary_audio_input = self.audio_inputs[self.audio_input_combo.get_active()]
             secondary_audio_input = self.secondary_audio_inputs[self.secondary_audio_input_combo.get_active()]
 
             logging.info(f"Primary audio input: {primary_audio_input}")
             logging.info(f"Secondary audio input: {secondary_audio_input}")
 
+            # Prepare FFmpeg command
             input_args = ["-thread_queue_size", "1024"]
 
             if self.is_webcam_overlay:
                 input_args.extend(["-itsoffset", "-1.1"])
 
+            # Add video input based on selected recording area
             if selected_recording_area == "Full Screen":
-                screen_info = self.get_screen_info()
-                if screen_info:
-                    width, height = screen_info
-                    logging.debug(f"Full screen recording: width={width}, height={height}")
-                    input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{width}x{height}", "-i", ":0.0"])
-                else:
-                    logging.error("Failed to get screen information")
-                    self.status_label.set_text("Error: Failed to get screen information")
-                    return
-            elif selected_recording_area == "Active Window":
-                window_info = self.get_active_window_info()
-                if window_info:
-                    x, y, width, height = window_info
-                    logging.debug(f"Active window recording: x={x}, y={y}, width={width}, height={height}")
-                    input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{width}x{height}", "-i", f":0.0+{x},{y}"])
-                else:
-                    logging.error("Failed to get active window information")
-                    self.status_label.set_text("Error: Failed to get active window information")
-                    return
-            elif selected_recording_area == "Custom Region":
-                if self.recording_region:
-                    x, y, width, height = self.recording_region
-                    logging.debug(f"Custom region recording: x={x}, y={y}, width={width}, height={height}")
-                    input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{width}x{height}", "-i", f":0.0+{x},{y}"])
-                else:
-                    logging.error("No custom region selected")
-                    self.status_label.set_text("Error: No custom region selected")
-                    return
+                input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{width}x{height}", "-i", ":0.0"])
             elif selected_recording_area == "Camera Only":
                 selected_camera = self.camera_combo.get_active_text()
                 if selected_camera:
@@ -630,11 +638,29 @@ class ScreenRecorder(Gtk.Window):
                 else:
                     self.status_label.set_text("Error: No camera selected.")
                     return
+            elif selected_recording_area == "Active Window":
+                selected_window = self.active_window_combo.get_active_text()
+                if selected_window:
+                    window_info = self.get_window_info_by_name(selected_window)
+                    if window_info:
+                        x_pos, y_pos, width, height = window_info
+                        width, height = self.ensure_even_dimensions(width, height)
+                        input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{width}x{height}", "-i", f":0.0+{x_pos},{y_pos}"])
+            elif selected_recording_area == "Custom Region":
+                if self.recording_region:
+                    x, y, w, h = self.recording_region
+                    w, h = self.ensure_even_dimensions(w, h)
+                    input_args.extend(["-f", "x11grab", "-framerate", "30", "-video_size", f"{w}x{h}", "-i", f":0.0+{x},{y}"])
+                else:
+                    self.status_label.set_text("Error: No custom region selected.")
+                    return
 
+            # Prepare audio filters
             audio_filters = "aresample=async=1:min_hard_comp=0.100000:first_pts=0"
             if selected_audio_codec == "aac":
                 audio_filters += ", volume=1.5, equalizer=f=1000:t=q:w=1:g=-5"
 
+            # Add audio input based on selected configuration
             audio_args = []
             if selected_audio_config == "Primary Only":
                 audio_args.extend(["-f", "pulse", "-i", primary_audio_input, "-af", audio_filters])
@@ -651,6 +677,7 @@ class ScreenRecorder(Gtk.Window):
             buffer_args = ["-bufsize", "750M", "-rtbufsize", "750M"]
             sync_args = ["-vsync", "1", "-async", "1"]
 
+            # Add webcam overlay if enabled
             if self.is_webcam_overlay:
                 selected_camera = self.camera_combo.get_active_text()
                 if selected_camera:
@@ -658,7 +685,7 @@ class ScreenRecorder(Gtk.Window):
                         camera_index = self.extract_camera_index(selected_camera)
                         webcam_device = f"/dev/video{camera_index}"
                         webcam_resolution = self.camera_resolution_combo.get_active_text()
-                        screen_width, screen_height = self.get_screen_info()
+                        screen_width, screen_height = self.get_screen_resolution()
                         webcam_width, webcam_height = self.calculate_webcam_size(screen_width, screen_height)
                         input_args.extend(["-f", "v4l2", "-video_size", f"{webcam_width}x{webcam_height}", "-framerate", "30", "-i", webcam_device])
                         filter_args = [
@@ -673,6 +700,7 @@ class ScreenRecorder(Gtk.Window):
             else:
                 filter_args = []
 
+            # Prepare output arguments based on streaming service
             if selected_streaming_service == "None":
                 output_args = ["-c:v", selected_video_codec, "-c:a", selected_audio_codec, "-preset", "ultrafast", "-crf", "23", "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M", "-b:a", "320k", self.output_filename]
             elif selected_streaming_service == "Twitch":
@@ -683,10 +711,12 @@ class ScreenRecorder(Gtk.Window):
                 self.status_label.set_text("Error: Invalid streaming service selected.")
                 return
 
+            # Combine all arguments into final command
             command = ["ffmpeg", "-y"] + input_args + audio_args + buffer_args + sync_args + filter_args + output_args
 
             logging.info(f"FFmpeg command: {' '.join(command)}")
 
+            # Start recording process and monitoring threads
             threading.Thread(target=self.start_ffmpeg_process, args=(command,)).start()
             threading.Thread(target=self.monitor_file_size).start()
             threading.Thread(target=self.update_tray_info).start()
@@ -694,8 +724,10 @@ class ScreenRecorder(Gtk.Window):
 
             self.update_tray_status(True)
 
+            # Enable the stop button in the settings window
             self.stop_button_settings.set_sensitive(True)
 
+            # Handle timer if active
             if self.timer_active:
                 hours = int(self.timer_hours_combo.get_active_text() or "0")
                 minutes = int(self.timer_minutes_combo.get_active_text() or "0")
@@ -709,23 +741,13 @@ class ScreenRecorder(Gtk.Window):
             else:
                 logging.info("Timer not active")
 
+            # Update UI
             GLib.idle_add(self.update_ui_for_recording_start)
 
 
 
 
-    def get_screen_info(self):
-        try:
-            display = Gdk.Display.get_default()
-            monitor = display.get_primary_monitor()
-            geometry = monitor.get_geometry()
-            scale_factor = monitor.get_scale_factor()
-            width = geometry.width * scale_factor
-            height = geometry.height * scale_factor
-            return width, height
-        except Exception as e:
-            logging.error(f"Error getting screen info: {e}")
-            return None
+
 
 
     def start_timer(self):
@@ -738,9 +760,6 @@ class ScreenRecorder(Gtk.Window):
         self.timer_thread = threading.Thread(target=self.timer_countdown)
         self.timer_thread.start()
         logging.info("Timer thread started")
-
-
-
 
 
 
@@ -763,11 +782,52 @@ class ScreenRecorder(Gtk.Window):
         logging.debug("UI update for recording start completed")
         return False  # Important for GLib.idle_add
 
+    def update_ui_for_recording_stop(self):
+        logging.debug("Updating UI for recording stop...")
+        
+        self.status_label.set_text("Recording stopped.")
+        self.settings_record_button.set_sensitive(True)
+        self.controls_record_button.set_sensitive(True)
+        logging.debug(f"Settings record button sensitivity after stop: {self.settings_record_button.get_sensitive()}")
+        logging.debug(f"Controls record button sensitivity after stop: {self.controls_record_button.get_sensitive()}")
+        
+        if hasattr(self, 'tray_record_item'):
+            self.tray_record_item.set_sensitive(True)
+        self.stop_button.set_sensitive(False)
+        self.stop_button_settings.set_sensitive(False)  # Disable the stop button in the settings window
+        self.pause_button.set_sensitive(False)
+        self.resume_button.set_sensitive(False)
+
+        # Update file size and elapsed time one last time
+        if self.output_filename and os.path.exists(self.output_filename):
+            final_size = os.path.getsize(self.output_filename)
+            self.file_size_label.set_text(f"File size: {self.convert_size(final_size)}")
+        
+        elapsed_time = time.time() - self.start_time
+        self.elapsed_time_menu_item.set_label(f"Elapsed Time: {self.format_time(elapsed_time)}")
+
+        # Reset timer if it was active
+        if hasattr(self, 'timer_checkbox'):
+            self.timer_checkbox.set_active(False)
+            if hasattr(self, 'timer_hours_combo'):
+                self.timer_hours_combo.set_active(0)
+            if hasattr(self, 'timer_minutes_combo'):
+                self.timer_minutes_combo.set_active(0)
+
+        # Update tray icon and tooltip
+        self.update_tray_status(False)
+        self.update_tray_tooltip()
+
+        logging.debug("UI update for recording stop completed")
+        return False  # Important for GLib.idle_add
+
+
 
 
 
     def on_timer_toggled(self, button):
         self.timer_active = button.get_active()
+        self.tray_timer_item.set_active(self.timer_active)  # Synchronize with tray icon menu
         self.update_tray_tooltip()
         if self.timer_active:
             hours = int(self.timer_hours_combo.get_active_text() or "0")
@@ -785,6 +845,20 @@ class ScreenRecorder(Gtk.Window):
                 self.timer_thread.join()
             self.timer_thread = None
             self.timer_seconds = 0
+
+    def on_timer_toggled_tray(self, widget):
+        self.timer_active = widget.get_active()
+        self.timer_checkbox.set_active(self.timer_active)  # Synchronize with main window
+        self.on_timer_toggled(self.timer_checkbox)
+
+    def de_toggle_timer_checkbox(self):
+        self.timer_checkbox.set_active(False)
+        self.tray_timer_item.set_active(False)  # Synchronize with tray icon menu
+        self.timer_hours_combo.set_active(0)  # Reset hours to 0
+        self.timer_minutes_combo.set_active(0)  # Reset minutes to 0
+        self.on_timer_toggled(self.timer_checkbox)  # Call this to update any related UI elements
+        self.update_tray_tooltip()  # Update the tray tooltip to reflect the changes
+
 
     def on_timer_changed(self, widget):
         if self.timer_active:
@@ -805,29 +879,43 @@ class ScreenRecorder(Gtk.Window):
         while self.is_recording and self.timer_active and self.timer_seconds > 0:
             elapsed_time = time.time() - start_time
             remaining = max(0, self.timer_seconds - elapsed_time)
-            
+
             logging.debug(f"Timer countdown: remaining={remaining:.2f}, is_recording={self.is_recording}, timer_active={self.timer_active}")
-            
+
             if remaining <= 0:
                 logging.info("Timer reached 0. Attempting to stop recording.")
                 self.timer_completed = True
                 GLib.idle_add(self.update_timer_display, 0)
                 GLib.idle_add(self.safe_stop_recording)
+                GLib.idle_add(self.de_toggle_timer_checkbox)  # Deactivate timer in both main window and tray icon menu
                 break
             else:
                 GLib.idle_add(self.update_timer_display, int(remaining))
-            
+
             time.sleep(1)
-        
+
         if not self.is_recording:
             logging.info("Timer countdown interrupted: Recording stopped")
         elif not self.timer_active:
             logging.info("Timer countdown interrupted: Timer deactivated")
         else:
             logging.info("Timer countdown finished")
-        
+
         self.timer_thread = None
         logging.info("Timer thread ended")
+
+
+    def de_toggle_timer_checkbox(self):
+        self.timer_checkbox.set_active(False)
+        self.timer_hours_combo.set_active(0)  # Reset hours to 0
+        self.timer_minutes_combo.set_active(0)  # Reset minutes to 0
+        self.on_timer_toggled(self.timer_checkbox)  # Call this to update any related UI elements
+
+        # Update the tray icon menu item
+        if hasattr(self, 'tray_timer_item'):
+            self.tray_timer_item.set_active(False)
+
+
 
 
 
@@ -837,7 +925,14 @@ class ScreenRecorder(Gtk.Window):
             self.stop_recording(None)
         else:
             logging.warning("safe_stop_recording called but is_recording is already False")
+        # De-toggle the timer in the main window
+        self.timer_checkbox.set_active(False)
+        # De-toggle the timer in the tray icon menu
+        for item in self.indicator.get_menu().get_children():
+            if isinstance(item, Gtk.CheckMenuItem) and item.get_label() == "Enable Timer":
+                item.set_active(False)
         return False  # Important for GLib.idle_add
+
 
 
 
@@ -851,34 +946,56 @@ class ScreenRecorder(Gtk.Window):
         return False
 
 
+    def get_webcam_position(self, screen_width, screen_height):
+        position = self.webcam_position_combo.get_active_text()
+        webcam_width, webcam_height = map(int, self.webcam_resolution.split('x'))
+        
+        # Ensure the webcam overlay doesn't exceed a certain percentage of the screen
+        max_width = int(screen_width * 0.3)
+        max_height = int(screen_height * 0.3)
+        
+        if webcam_width > max_width or webcam_height > max_height:
+            scale = min(max_width / webcam_width, max_height / webcam_height)
+            webcam_width = int(webcam_width * scale)
+            webcam_height = int(webcam_height * scale)
 
-    def safe_stop_recording(self):
-        logging.info("safe_stop_recording called")
-        if self.is_recording:
-            self.stop_recording(None)
+        if position == "top-left":
+            return f"10:10:{webcam_width}:{webcam_height}"
+        elif position == "top-right":
+            return f"{screen_width - webcam_width - 10}:10:{webcam_width}:{webcam_height}"
+        elif position == "bottom-left":
+            return f"10:{screen_height - webcam_height - 10}:{webcam_width}:{webcam_height}"
+        elif position == "bottom-right":
+            return f"{screen_width - webcam_width - 10}:{screen_height - webcam_height - 10}:{webcam_width}:{webcam_height}"
+        elif position == "center":
+            return f"{(screen_width - webcam_width) // 2}:{(screen_height - webcam_height) // 2}:{webcam_width}:{webcam_height}"
         else:
-            logging.warning("safe_stop_recording called but is_recording is already False")
-        return False  # Important for GLib.idle_add
+            return f"10:10:{webcam_width}:{webcam_height}"  # Default to top-left if position is not recognized
+
+
 
 
 
 
     def get_webcam_position(self, width, height):
         position = self.webcam_position_combo.get_active_text()
+        webcam_width = width // 4
+        webcam_height = height // 4
         if position == "top-left":
             return "10:10"
         elif position == "top-right":
-            return f"{width - width // 4 - 10}:10"
+            return f"{width - webcam_width - 10}:10"
         elif position == "bottom-left":
-            return f"10:{height - height // 4 - 10}"
+            return f"10:{height - webcam_height - 10}"
         elif position == "bottom-right":
-            return f"{width - width // 4 - 10}:{height - height // 4 - 10}"
+            return f"{width - webcam_width - 10}:{height - webcam_height - 10}"
+        elif position == "center":
+            return f"{(width - webcam_width) // 2}:{(height - webcam_height) // 2}"
         else:
             return "10:10"  # Default to top-left if position is not recognized
 
     def start_ffmpeg_process(self, command):
         try:
-            logging.debug(f"Starting FFmpeg process with command: {' '.join(command)}")
             self.ffmpeg_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.monitor_ffmpeg_output()
             self.ffmpeg_process.wait()
@@ -890,8 +1007,12 @@ class ScreenRecorder(Gtk.Window):
 
     def monitor_ffmpeg_output(self):
         if self.ffmpeg_process:
-            for line in self.ffmpeg_process.stderr:
-                logging.debug(f"FFmpeg output: {line.decode().strip()}")
+            while self.ffmpeg_process.poll() is None:
+                rlist, _, _ = select.select([self.ffmpeg_process.stdout, self.ffmpeg_process.stderr], [], [])
+                for stream in rlist:
+                    output = stream.readline()
+                    if output:
+                        print(output.strip().decode('utf-8'))
 
     def pause_recording(self, widget):
         if self.is_recording and not self.is_paused:
@@ -978,7 +1099,7 @@ class ScreenRecorder(Gtk.Window):
 
     def update_tray_tooltip(self):
         settings = []
-        
+
         def safe_get_text(combo):
             try:
                 return combo.get_active_text() or "Not selected"
@@ -1055,6 +1176,7 @@ class ScreenRecorder(Gtk.Window):
                 except Exception as e:
                     print(f"Error setting indicator title: {e}")
 
+
     def update_tray_tooltip_continuously(self):
         while self.is_recording or self.is_paused:
             file_size_text = f"File Size: {self.convert_size(self.file_size)}"
@@ -1097,7 +1219,20 @@ class ScreenRecorder(Gtk.Window):
 
 
 
-        
+
+    #def update_recent_recordings_controls(self):
+        #if not self.completed_recordings:
+       #     self.recent_recordings_label_controls.set_text("Recent Recordings:\nNone")
+        #else:
+            #recent_recordings_text = "Recent Recordings:\n"
+            #for recording, timestamp in sorted(self.completed_recordings, key=lambda x: x[1], reverse=True):
+             #   filename = os.path.basename(recording)
+             #   recent_recordings_text += f"{filename}\n"
+            #self.recent_recordings_label_controls.set_text(recent_recordings_text)
+
+
+
+
 
     def stop_recording(self, widget):
         logging.info("stop_recording called")
@@ -1105,6 +1240,7 @@ class ScreenRecorder(Gtk.Window):
             logging.debug("Stopping recording...")
             self.is_recording = False
 
+            # Disable stop button and enable record button
             self.stop_button_settings.set_sensitive(False)
             self.stop_button.set_sensitive(False)
             self.settings_record_button.set_sensitive(True)
@@ -1114,6 +1250,7 @@ class ScreenRecorder(Gtk.Window):
 
             self.status_label.set_text("Recording stopped.")
 
+            # Stop the FFmpeg recording process
             if self.ffmpeg_process:
                 try:
                     logging.debug("Terminating ffmpeg process")
@@ -1128,87 +1265,73 @@ class ScreenRecorder(Gtk.Window):
                         logging.error("FFmpeg process could not be killed.")
                     except Exception as e:
                         logging.error(f"Error killing FFmpeg process: {e}")
+                except Exception as e:
+                    logging.error(f"Error terminating FFmpeg process: {e}")
                 finally:
                     self.ffmpeg_process = None
                     logging.debug("ffmpeg process terminated")
 
+            # Add the recording to the recent recordings list
             if self.output_filename:
                 self.completed_recordings.append((self.output_filename, time.time()))
+                #self.update_recent_recordings_controls()
                 self.update_recent_recording_info_label()
 
+            # Reset timer if it was active
             self.timer_active = False
             self.timer_seconds = 0
             if self.timer_thread and self.timer_thread.is_alive():
-                self.timer_thread.join(timeout=5)
+                self.timer_thread.join(timeout=5)  # Wait for up to 5 seconds
                 if self.timer_thread.is_alive():
                     logging.warning("Timer thread did not finish in time")
             self.timer_thread = None
 
+            # Update UI elements
             GLib.idle_add(self.update_ui_for_recording_stop)
-
-
-    def update_ui_for_recording_start(self):
-        logging.debug("Updating UI for recording start...")
-        self.status_label.set_text("Recording...")
-        self.settings_record_button.set_sensitive(False)
-        self.controls_record_button.set_sensitive(False)
-        self.stop_button_settings.set_sensitive(True)
-        self.stop_button.set_sensitive(True)
-        if hasattr(self, 'tray_record_item'):
-            self.tray_record_item.set_sensitive(False)
-        self.pause_button.set_sensitive(True)
-        self.resume_button.set_sensitive(False)
-        
-        self.update_tray_status(True)
-        self.update_tray_tooltip()
-        
-        logging.debug("UI update for recording start completed")
-        return False
 
 
 
 
     def update_ui_for_recording_stop(self):
-            logging.debug("Updating UI for recording stop...")
-            
-            self.status_label.set_text("Recording stopped.")
-            self.settings_record_button.set_sensitive(True)
-            self.controls_record_button.set_sensitive(True)
-            logging.debug(f"Settings record button sensitivity after stop: {self.settings_record_button.get_sensitive()}")
-            logging.debug(f"Controls record button sensitivity after stop: {self.controls_record_button.get_sensitive()}")
-            
-            if hasattr(self, 'tray_record_item'):
-                self.tray_record_item.set_sensitive(True)
-            self.stop_button.set_sensitive(False)
-            self.stop_button_settings.set_sensitive(False)  # Disable the stop button in the settings window
-            self.pause_button.set_sensitive(False)
-            self.resume_button.set_sensitive(False)
+        logging.debug("Updating UI for recording stop...")
+        
+        self.status_label.set_text("Recording stopped.")
+        self.settings_record_button.set_sensitive(True)
+        self.controls_record_button.set_sensitive(True)
+        logging.debug(f"Settings record button sensitivity after stop: {self.settings_record_button.get_sensitive()}")
+        logging.debug(f"Controls record button sensitivity after stop: {self.controls_record_button.get_sensitive()}")
+        
+        if hasattr(self, 'tray_record_item'):
+            self.tray_record_item.set_sensitive(True)
+        self.stop_button.set_sensitive(False)
+        self.pause_button.set_sensitive(False)
+        self.resume_button.set_sensitive(False)
 
-            # Update file size and elapsed time one last time
-            if self.output_filename and os.path.exists(self.output_filename):
-                final_size = os.path.getsize(self.output_filename)
-                self.file_size_label.set_text(f"File size: {self.convert_size(final_size)}")
-            
-            elapsed_time = time.time() - self.start_time
-            self.elapsed_time_menu_item.set_label(f"Elapsed Time: {self.format_time(elapsed_time)}")
+        # Update file size and elapsed time one last time
+        if self.output_filename and os.path.exists(self.output_filename):
+            final_size = os.path.getsize(self.output_filename)
+            self.file_size_label.set_text(f"File size: {self.convert_size(final_size)}")
+        
+        elapsed_time = time.time() - self.start_time
+        self.elapsed_time_menu_item.set_label(f"Elapsed Time: {self.format_time(elapsed_time)}")
 
-            # Reset timer if it was active
-            if hasattr(self, 'timer_checkbox'):
-                self.timer_checkbox.set_active(False)
-                if hasattr(self, 'timer_hours_combo'):
-                    self.timer_hours_combo.set_active(0)
-                if hasattr(self, 'timer_minutes_combo'):
-                    self.timer_minutes_combo.set_active(0)
+        # Reset timer if it was active
+        if hasattr(self, 'timer_checkbox'):
+            self.timer_checkbox.set_active(False)
+            if hasattr(self, 'timer_hours_combo'):
+                self.timer_hours_combo.set_active(0)
+            if hasattr(self, 'timer_minutes_combo'):
+                self.timer_minutes_combo.set_active(0)
 
-            # Update tray icon and tooltip
-            self.update_tray_status(False)
-            self.update_tray_tooltip()
+        # Update tray icon and tooltip
+        self.update_tray_status(False)
+        self.update_tray_tooltip()
+        
+        # Update recent recording info label
+        self.update_recent_recording_info_label()
 
-            logging.debug("UI update for recording stop completed")
-            return False  # Important for GLib.idle_add
-
-
-
+        logging.debug("UI update for recording stop completed")
+        return False  # Important for GLib.idle_add
 
 
 
@@ -1260,7 +1383,7 @@ class ScreenRecorder(Gtk.Window):
                         self.recording_region = (x, y, width, height)
                         GLib.idle_add(self.status_label.set_text, "Custom region selected. Recording will start now.")
 
-                        time.sleep(0.9)
+                        time.sleep(0.5)
 
                         GLib.idle_add(self.start_recording, None)
                     else:
@@ -1383,12 +1506,7 @@ class ScreenRecorder(Gtk.Window):
             logging.error("No camera selected")
             self.status_label.set_text("Error: No camera selected.")
 
-    def extract_camera_index(self, camera_text):
-        match = re.search(r'/dev/video(\d+)', camera_text)
-        if match:
-            return match.group(1)
-        else:
-            raise ValueError(f"No valid camera index found in: {camera_text}")
+
 
     def bring_camera_window_to_front(self):
         if self.camera_window:
@@ -1420,46 +1538,39 @@ class ScreenRecorder(Gtk.Window):
     def get_available_cameras_v4l2(self):
         try:
             output = subprocess.check_output(['v4l2-ctl', '--list-devices']).decode('utf-8')
-            devices = re.findall(r'([^\n]+):\n\s*(/dev/video\d+)', output, re.DOTALL)
-            cameras = [f"{name.strip()} ({device.strip()})" for name, device in devices]
+            devices = re.findall(r'([^\n]+)\n\t([^\n]+)', output)
+            logging.debug(f"Available cameras: {devices}")
+            cameras = []
+            for device in devices:
+                cameras.append(f"{device[0]} ({device[1]})")
             return cameras
         except subprocess.CalledProcessError as e:
             logging.error(f"Error getting available cameras: {e}")
             return []
 
-
-
-    def create_menu_item_with_icon(self, label, icon_name):
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        icon = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
-        box.pack_start(icon, False, False, 0)
-        box.pack_start(Gtk.Label(label=label), False, False, 0)
-        menu_item = Gtk.MenuItem()
-        menu_item.add(box)
-        return menu_item
-
-
-
     def create_tray_icon(self):
         self.indicator = AppIndicator3.Indicator.new(
             "screen-recorder-indicator",
-            "media-playback-stop",
+            "media-playback-stop",  # Change the initial icon to the stop icon
             AppIndicator3.IndicatorCategory.APPLICATION_STATUS
         )
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
 
         menu = Gtk.Menu()
 
-        show_item = self.create_menu_item_with_icon("Main/Settings Window", "preferences-system")
+        show_item = Gtk.ImageMenuItem(label="Main/Settings Window")
+        show_icon = Gtk.Image.new_from_icon_name("preferences-system", Gtk.IconSize.MENU)
+        show_item.set_image(show_icon)
         show_item.connect("activate", self.show_window)
         menu.append(show_item)
 
-        timer_item = Gtk.CheckMenuItem(label="Enable Timer")
-        timer_item.set_active(False)
-        timer_item.connect("toggled", self.on_timer_toggled_tray)
-        menu.append(timer_item)
+        # Timer configuration in tray
+        self.tray_timer_item = Gtk.CheckMenuItem(label="Enable Timer")
+        self.tray_timer_item.set_active(False)
+        self.tray_timer_item.connect("toggled", self.on_timer_toggled_tray)
+        menu.append(self.tray_timer_item)
 
-        timer_hours_item = self.create_menu_item_with_icon("Set Timer Hours", "alarm")
+        timer_hours_item = Gtk.ImageMenuItem(label="Set Timer Hours")
         timer_hours_submenu = Gtk.Menu()
         self.timer_hours_group = []
         for hour in range(24):
@@ -1470,7 +1581,7 @@ class ScreenRecorder(Gtk.Window):
         timer_hours_item.set_submenu(timer_hours_submenu)
         menu.append(timer_hours_item)
 
-        timer_minutes_item = self.create_menu_item_with_icon("Set Timer Minutes", "alarm")
+        timer_minutes_item = Gtk.ImageMenuItem(label="Set Timer Minutes")
         timer_minutes_submenu = Gtk.Menu()
         self.timer_minutes_group = []
         for minute in range(60):
@@ -1481,8 +1592,11 @@ class ScreenRecorder(Gtk.Window):
         timer_minutes_item.set_submenu(timer_minutes_submenu)
         menu.append(timer_minutes_item)
 
+        # Initialize recording area group
         self.recording_area_group = []
-        recording_area_menu = self.create_menu_item_with_icon("Select Recording Area", "video-display")
+        recording_area_menu = Gtk.ImageMenuItem(label="Select Recording Area")
+        recording_area_icon = Gtk.Image.new_from_icon_name("video-display", Gtk.IconSize.MENU)
+        recording_area_menu.set_image(recording_area_icon)
         recording_area_submenu = Gtk.Menu()
 
         full_screen_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, "Full Screen")
@@ -1507,8 +1621,11 @@ class ScreenRecorder(Gtk.Window):
         recording_area_menu.set_submenu(recording_area_submenu)
         menu.append(recording_area_menu)
 
+        # Initialize active window group
         self.active_window_group = []
-        active_window_menu = self.create_menu_item_with_icon("Select Active Window", "window")
+        active_window_menu = Gtk.ImageMenuItem(label="Select Active Window")
+        active_window_icon = Gtk.Image.new_from_icon_name("window", Gtk.IconSize.MENU)
+        active_window_menu.set_image(active_window_icon)
         active_window_submenu = Gtk.Menu()
 
         active_windows = self.get_active_windows()
@@ -1520,12 +1637,40 @@ class ScreenRecorder(Gtk.Window):
         active_window_menu.set_submenu(active_window_submenu)
         menu.append(active_window_menu)
 
-        refresh_windows_item = self.create_menu_item_with_icon("Refresh Windows", "view-refresh")
+
+
+        # Update the webcam position submenu in the tray icon
+        webcam_position_menu = Gtk.ImageMenuItem(label="Webcam Position")
+        webcam_position_icon = Gtk.Image.new_from_icon_name("camera-web", Gtk.IconSize.MENU)
+        webcam_position_menu.set_image(webcam_position_icon)
+        webcam_position_submenu = Gtk.Menu()
+
+        self.webcam_position_group = []
+        for position in self.webcam_positions:
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(
+                None if not self.webcam_position_group else self.webcam_position_group[0],
+                position
+            )
+            item.connect("activate", self.set_webcam_position, position)
+            self.webcam_position_group.append(item)
+            webcam_position_submenu.append(item)
+
+        webcam_position_menu.set_submenu(webcam_position_submenu)
+        menu.append(webcam_position_menu)
+
+
+
+        refresh_windows_item = Gtk.ImageMenuItem(label="Refresh Windows")
+        refresh_icon = Gtk.Image.new_from_icon_name("view-refresh", Gtk.IconSize.MENU)
+        refresh_windows_item.set_image(refresh_icon)
         refresh_windows_item.connect("activate", self.refresh_windows)
         menu.append(refresh_windows_item)
 
+        # Initialize output format group
         self.output_format_group = []
-        output_format_menu = self.create_menu_item_with_icon("Select Output Format", "document-save")
+        output_format_menu = Gtk.ImageMenuItem(label="Select Output Format")
+        output_format_icon = Gtk.Image.new_from_icon_name("document-save", Gtk.IconSize.MENU)
+        output_format_menu.set_image(output_format_icon)
         output_format_submenu = Gtk.Menu()
 
         mkv_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, "mkv")
@@ -1535,7 +1680,9 @@ class ScreenRecorder(Gtk.Window):
         mkv_item.connect("activate", self.set_output_format, "mkv")
         mp4_item.connect("activate", self.set_output_format, "mp4")
         webm_item.connect("activate", self.set_output_format, "webm")
-        self.output_format_group.extend([mkv_item, mp4_item, webm_item])
+        self.output_format_group.append(mkv_item)
+        self.output_format_group.append(mp4_item)
+        self.output_format_group.append(webm_item)
 
         output_format_submenu.append(mkv_item)
         output_format_submenu.append(mp4_item)
@@ -1543,8 +1690,11 @@ class ScreenRecorder(Gtk.Window):
         output_format_menu.set_submenu(output_format_submenu)
         menu.append(output_format_menu)
 
+        # Initialize audio codec group
         self.audio_codec_group = []
-        audio_codec_menu = self.create_menu_item_with_icon("Select Audio Codec", "audio-x-generic")
+        audio_codec_menu = Gtk.ImageMenuItem(label="Select Audio Codec")
+        audio_codec_icon = Gtk.Image.new_from_icon_name("audio-x-generic", Gtk.IconSize.MENU)
+        audio_codec_menu.set_image(audio_codec_icon)
         audio_codec_submenu = Gtk.Menu()
 
         aac_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, "aac")
@@ -1553,7 +1703,9 @@ class ScreenRecorder(Gtk.Window):
         aac_item.connect("activate", self.set_audio_codec, "aac")
         mp3_item.connect("activate", self.set_audio_codec, "mp3")
         opus_item.connect("activate", self.set_audio_codec, "opus")
-        self.audio_codec_group.extend([aac_item, mp3_item, opus_item])
+        self.audio_codec_group.append(aac_item)
+        self.audio_codec_group.append(mp3_item)
+        self.audio_codec_group.append(opus_item)
 
         audio_codec_submenu.append(aac_item)
         audio_codec_submenu.append(mp3_item)
@@ -1561,8 +1713,11 @@ class ScreenRecorder(Gtk.Window):
         audio_codec_menu.set_submenu(audio_codec_submenu)
         menu.append(audio_codec_menu)
 
+        # Initialize audio input config group
         self.audio_input_config_group = []
-        audio_input_config_menu = self.create_menu_item_with_icon("Select Audio Input Configuration", "preferences-desktop-sound")
+        audio_input_config_menu = Gtk.ImageMenuItem(label="Select Audio Input Configuration")
+        audio_input_config_icon = Gtk.Image.new_from_icon_name("preferences-desktop-sound", Gtk.IconSize.MENU)
+        audio_input_config_menu.set_image(audio_input_config_icon)
         audio_input_config_submenu = Gtk.Menu()
 
         primary_only_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, "Primary Only")
@@ -1571,7 +1726,9 @@ class ScreenRecorder(Gtk.Window):
         primary_only_item.connect("activate", self.set_audio_input_config, "Primary Only")
         secondary_only_item.connect("activate", self.set_audio_input_config, "Secondary Only")
         both_item.connect("activate", self.set_audio_input_config, "Both")
-        self.audio_input_config_group.extend([primary_only_item, secondary_only_item, both_item])
+        self.audio_input_config_group.append(primary_only_item)
+        self.audio_input_config_group.append(secondary_only_item)
+        self.audio_input_config_group.append(both_item)
 
         audio_input_config_submenu.append(primary_only_item)
         audio_input_config_submenu.append(secondary_only_item)
@@ -1579,8 +1736,11 @@ class ScreenRecorder(Gtk.Window):
         audio_input_config_menu.set_submenu(audio_input_config_submenu)
         menu.append(audio_input_config_menu)
 
+        # Initialize primary audio input group
         self.primary_audio_input_group = []
-        primary_audio_input_menu = self.create_menu_item_with_icon("Select Primary Audio Input", "audio-input-microphone")
+        primary_audio_input_menu = Gtk.ImageMenuItem(label="Select Primary Audio Input")
+        primary_audio_input_icon = Gtk.Image.new_from_icon_name("audio-input-microphone", Gtk.IconSize.MENU)
+        primary_audio_input_menu.set_image(primary_audio_input_icon)
         primary_audio_input_submenu = Gtk.Menu()
 
         for input_device in self.audio_inputs:
@@ -1591,8 +1751,11 @@ class ScreenRecorder(Gtk.Window):
         primary_audio_input_menu.set_submenu(primary_audio_input_submenu)
         menu.append(primary_audio_input_menu)
 
+        # Initialize secondary audio input group
         self.secondary_audio_input_group = []
-        secondary_audio_input_menu = self.create_menu_item_with_icon("Select Secondary Audio Input", "audio-input-line")
+        secondary_audio_input_menu = Gtk.ImageMenuItem(label="Select Secondary Audio Input")
+        secondary_audio_input_icon = Gtk.Image.new_from_icon_name("audio-input-line", Gtk.IconSize.MENU)
+        secondary_audio_input_menu.set_image(secondary_audio_input_icon)
         secondary_audio_input_submenu = Gtk.Menu()
 
         for input_device in self.secondary_audio_inputs:
@@ -1603,36 +1766,59 @@ class ScreenRecorder(Gtk.Window):
         secondary_audio_input_menu.set_submenu(secondary_audio_input_submenu)
         menu.append(secondary_audio_input_menu)
 
-        select_custom_region_item = self.create_menu_item_with_icon("Select Custom Region", "image-x-generic")
+        select_custom_region_item = Gtk.ImageMenuItem(label="Select Custom Region")
+        custom_region_icon = Gtk.Image.new_from_icon_name("image-x-generic", Gtk.IconSize.MENU)
+        select_custom_region_item.set_image(custom_region_icon)
         select_custom_region_item.connect("activate", self.select_custom_region)
         menu.append(select_custom_region_item)
 
-        record_item = self.create_menu_item_with_icon("Record", "media-record")
+        # Add the Journal launcher
+        journal_launcher_item = Gtk.ImageMenuItem(label="Journal")
+        journal_launcher_icon = Gtk.Image.new_from_icon_name("media-record", Gtk.IconSize.MENU)
+        journal_launcher_item.set_image(journal_launcher_icon)
+        journal_launcher_item.connect("activate", self.launch_journal)
+        menu.append(journal_launcher_item)
+
+        record_item = Gtk.ImageMenuItem(label="Record")
+        record_icon = Gtk.Image.new_from_icon_name("media-record", Gtk.IconSize.MENU)
+        record_item.set_image(record_icon)
         record_item.connect("activate", self.start_recording)
         menu.append(record_item)
-        self.tray_record_item = record_item
+        self.tray_record_item = record_item  # Store a reference to the tray record item
 
-        pause_item = self.create_menu_item_with_icon("Pause Recording", "media-playback-pause")
+        pause_item = Gtk.ImageMenuItem(label="Pause Recording")
+        pause_icon = Gtk.Image.new_from_icon_name("media-playback-pause", Gtk.IconSize.MENU)
+        pause_item.set_image(pause_icon)
         pause_item.connect("activate", self.pause_recording)
         menu.append(pause_item)
 
-        resume_item = self.create_menu_item_with_icon("Resume Recording", "media-playback-start")
+        resume_item = Gtk.ImageMenuItem(label="Resume Recording")
+        resume_icon = Gtk.Image.new_from_icon_name("media-playback-start", Gtk.IconSize.MENU)
+        resume_item.set_image(resume_icon)
         resume_item.connect("activate", self.resume_recording)
         menu.append(resume_item)
 
-        stop_record_item = self.create_menu_item_with_icon("Stop Recording", "media-playback-stop")
+        stop_record_item = Gtk.ImageMenuItem(label="Stop Recording")
+        stop_record_icon = Gtk.Image.new_from_icon_name("media-playback-stop", Gtk.IconSize.MENU)
+        stop_record_item.set_image(stop_record_icon)
         stop_record_item.connect("activate", self.stop_recording)
         menu.append(stop_record_item)
 
-        self.recent_recording_menu_item = self.create_menu_item_with_icon("No recent recording", "document-open-recent")
+        self.recent_recording_menu_item = Gtk.ImageMenuItem(label="No recent recording")
+        recent_recording_icon = Gtk.Image.new_from_icon_name("document-open-recent", Gtk.IconSize.MENU)
+        self.recent_recording_menu_item.set_image(recent_recording_icon)
         self.recent_recording_menu_item.connect("activate", self.open_recent_recording)
         menu.append(self.recent_recording_menu_item)
 
-        about_item = self.create_menu_item_with_icon("About Us", "help-about")
+        about_item = Gtk.ImageMenuItem(label="About Us")
+        about_icon = Gtk.Image.new_from_icon_name("help-about", Gtk.IconSize.MENU)
+        about_item.set_image(about_icon)
         about_item.connect("activate", self.show_about_dialog)
         menu.append(about_item)
 
-        quit_item = self.create_menu_item_with_icon("Quit", "application-exit")
+        quit_item = Gtk.ImageMenuItem(label="Quit")
+        quit_icon = Gtk.Image.new_from_icon_name("application-exit", Gtk.IconSize.MENU)
+        quit_item.set_image(quit_icon)
         quit_item.connect("activate", self.quit_app)
         menu.append(quit_item)
 
@@ -1654,9 +1840,19 @@ class ScreenRecorder(Gtk.Window):
         self.update_tray_selection()  # Initialize the tray selections
 
 
+    def set_webcam_position(self, widget, position):
+        if widget.get_active():
+            self.webcam_position_combo.set_active(self.webcam_positions.index(position))
+            self.update_tray_tooltip()
 
 
 
+    def create_menu_item_with_icon(self, label, icon_name):
+        item = Gtk.ImageMenuItem(label=label)
+        icon = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
+        item.set_image(icon)
+        item.set_always_show_image(True)
+        return item
 
 
 
@@ -1675,8 +1871,201 @@ class ScreenRecorder(Gtk.Window):
             self.timer_minutes_combo.set_active(minutes)
             self.on_timer_changed(self.timer_minutes_combo)
 
+#---------Journal Area----------------------------#
+
+    def launch_journal(self, widget):
+        logging.info("Launching Journal")
+        self.status_label.set_text("Initializing Journal...")
+
+        try:
+            # Toggle on the Journal mode checkbox
+            self.journaling_mode_checkbox.set_active(True)
+            self.is_journal_mode = True
+            logging.info("Journal mode activated")
+
+            # Step 1: Launch the web camera
+            available_cameras = self.get_available_cameras_v4l2()
+            if not available_cameras:
+                raise Exception("No webcam detected")
+
+            selected_camera = available_cameras[0]  # Select the first available camera
+            selected_resolution = "640x480"
+            device = f"/dev/video{self.extract_camera_index(selected_camera)}"
+            command = ['ffplay', '-f', 'v4l2', '-video_size', selected_resolution, '-vf', 'hflip', device]
+
+            self.camera_window = subprocess.Popen(command)
+            time.sleep(2)  # Give more time for the camera window to open
+
+            # Step 2: Refresh active windows to include the new camera window
+            self.update_active_windows()
+            active_windows = self.get_active_windows()
+            logging.info(f"Updated active windows: {active_windows}")
+
+            # Step 3: Find the active window corresponding to /dev/video0
+            window_name = next((window for window in active_windows if "/dev/video0" in window), None)
+            if window_name is None:
+                raise Exception("Webcam window not found in active windows list")
+            logging.info(f"Found webcam window: {window_name}")
+
+            # Step 4: Set the recording area to Active Window and select the webcam window
+            self.recording_area_combo.set_active(self.recording_areas.index("Active Window"))
+            window_index = active_windows.index(window_name)
+            self.active_window_combo.set_active(window_index)
+            logging.info(f"Set recording area to Active Window and selected webcam window at index {window_index}")
+
+            # Verify the selection
+            if self.recording_area_combo.get_active_text() != "Active Window":
+                raise Exception("Failed to set recording area to Active Window")
+            if self.active_window_combo.get_active_text() != window_name:
+                raise Exception("Failed to select the correct active window")
+
+            # Step 5: Get window info and set the recording region
+            window_info = self.get_window_info_by_name(window_name)
+            if not window_info:
+                raise Exception("Failed to get window info for webcam")
+            self.custom_region_start_x, self.custom_region_start_y, width, height = window_info
+            self.custom_region_end_x = self.custom_region_start_x + width
+            self.custom_region_end_y = self.custom_region_start_y + height
+            self.recording_region = (self.custom_region_start_x, self.custom_region_start_y, width, height)
+            logging.info(f"Set recording region: {self.recording_region}")
+
+            # Step 6: Set the primary audio input to the web camera
+            self.refresh_audio_inputs()
+            available_audio_inputs = self.audio_inputs
+            logging.info(f"Available audio inputs: {available_audio_inputs}")
+
+            # Look for any webcam-related audio input
+            webcam_audio_input = next((input for input in available_audio_inputs if any(cam in input.lower() for cam in ["webcam", "camera", "video"])), None)
+            if not webcam_audio_input:
+                # If no webcam-specific audio input is found, use the default input
+                webcam_audio_input = available_audio_inputs[0]
+                logging.warning(f"No webcam-specific audio input found. Using default: {webcam_audio_input}")
+
+            webcam_audio_index = self.audio_inputs.index(webcam_audio_input)
+            self.audio_input_combo.set_active(webcam_audio_index)
+            logging.info(f"Set primary audio input to: {webcam_audio_input}")
+
+            # Verify the audio input selection
+            if self.audio_input_combo.get_active_text() != webcam_audio_input:
+                raise Exception(f"Failed to set the correct audio input. Expected: {webcam_audio_input}, Got: {self.audio_input_combo.get_active_text()}")
+            
+
+            # Step 7: Start recording
+            self.start_recording(widget)
+            if not self.is_recording:
+                raise Exception("Failed to start recording")
+            logging.info("Recording started successfully")
+
+            # Step 8: Start monitoring the camera window
+            threading.Thread(target=self.monitor_camera_window).start()
+
+            self.status_label.set_text("Journal mode active. Recording in progress...")
+
+        except Exception as e:
+            logging.error(f"Error in launch_journal: {e}")
+            self.status_label.set_text(f"Journal launch failed: {e}")
+            if hasattr(self, 'camera_window') and self.camera_window:
+                self.camera_window.terminate()
+            
+            # De-toggle the Journal mode
+            self.journaling_mode_checkbox.set_active(False)
+            self.is_journal_mode = False
+            logging.info("Journal mode deactivated due to error")
+
+        finally:
+            # This block will run whether there was an exception or not
+            if not self.is_journal_mode:
+                logging.info("Journal mode is not active")
+            else:
+                logging.info("Journal mode is active")
 
 
+
+
+    def refresh_audio_inputs(self):
+            self.audio_inputs = self.get_available_audio_inputs()
+            self.audio_input_combo.remove_all()
+            for input_device in self.audio_inputs:
+                self.audio_input_combo.append_text(input_device)
+            self.audio_input_combo.set_active(0)
+            logging.info(f"Refreshed audio inputs: {self.audio_inputs}")
+
+    def close_camera_preview(self):
+        if hasattr(self, 'camera_preview') and self.camera_preview:
+            self.camera_preview.terminate()
+            self.camera_preview.wait()
+            self.camera_preview = None
+            logging.info("Closed camera preview")
+
+    def check_camera_window_opened(self):
+        try:
+            output = subprocess.check_output(['wmctrl', '-l']).decode('utf-8')
+            return any("video" in line.lower() for line in output.splitlines())
+        except subprocess.CalledProcessError:
+            logging.error("Failed to check for camera window using wmctrl")
+            return False
+
+    def refresh_audio_inputs(self):
+        self.audio_inputs = self.get_available_audio_inputs()
+        self.audio_input_combo.remove_all()
+        for input_device in self.audio_inputs:
+            self.audio_input_combo.append_text(input_device)
+        self.audio_input_combo.set_active(0)
+        logging.info(f"Refreshed audio inputs: {self.audio_inputs}")
+
+
+
+
+    def monitor_camera_window(self):
+        while self.camera_window.poll() is None:
+            time.sleep(1)
+        
+        # Camera window closed
+        logging.info("Camera window closed. Stopping recording and deactivating Journal mode.")
+        
+        # Stop the recording
+        GLib.idle_add(self.stop_recording, None)
+        
+        # De-toggle the Journal mode
+        GLib.idle_add(self.deactivate_journal_mode)
+        
+        # Reset recording area and audio input
+        GLib.idle_add(self.reset_recording_area)
+        GLib.idle_add(self.reset_audio_input)
+
+
+    def deactivate_journal_mode(self):
+        self.journaling_mode_checkbox.set_active(False)
+        self.is_journal_mode = False
+        logging.info("Journal mode deactivated")
+        self.status_label.set_text("Journal mode deactivated")
+        
+
+    def reset_recording_area(self):
+        self.recording_area_combo.set_active(self.recording_areas.index("Full Screen"))
+
+    def reset_audio_input(self):
+        default_audio_input = "analog-stereo.4.monitor"
+        logging.info(f"Attempting to reset audio input to: {default_audio_input}")
+        
+        # Refresh the audio inputs
+        self.refresh_audio_inputs()
+        
+        try:
+            index = self.audio_inputs.index(default_audio_input)
+            self.audio_input_combo.set_active(index)
+            logging.info(f"Successfully reset audio input to {default_audio_input}")
+        except ValueError:
+            logging.warning(f"Default audio input '{default_audio_input}' not found. Using first available input.")
+            if self.audio_inputs:
+                self.audio_input_combo.set_active(0)
+                logging.info(f"Set audio input to: {self.audio_inputs[0]}")
+            else:
+                logging.error("No audio inputs available")
+
+
+
+#--------------Journal End------------------# 
 
     def set_active_window(self, widget, window):
         if widget.get_active():
@@ -1744,6 +2133,14 @@ class ScreenRecorder(Gtk.Window):
             if item.get_label() == secondary_audio_input_active:
                 item.set_active(True)
 
+
+
+        webcam_position_active = self.webcam_position_combo.get_active_text()
+        for item in self.webcam_position_group:
+            if item.get_label() == webcam_position_active:
+                item.set_active(True)
+
+
     def set_recording_area(self, widget, area):
         if widget.get_active():
             self.recording_area_combo.set_active(self.recording_areas.index(area))
@@ -1756,6 +2153,7 @@ class ScreenRecorder(Gtk.Window):
         else:
             self.recent_recording_menu_item.set_label("No recent recording")
             self.recent_recording_menu_item.set_sensitive(False)
+
 
     def open_recent_recording(self, widget):
         if self.completed_recordings:
