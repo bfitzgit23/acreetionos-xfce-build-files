@@ -29,6 +29,7 @@ ethtool
 exfatprogs
 efivar
 efibootmgr
+fish
 f2fs-tools
 fatresize
 fsarchiver
@@ -211,6 +212,7 @@ pacutils
 pkgfile
 tlp
 upower
+vala
 wget
 wipe
 
@@ -386,6 +388,10 @@ qt5-translations
 qt5-x11extras
 qt5ct
 kvantum
+qtermwidget
+qt6-5compat
+qt6-tools
+cmake
 
 ## Printer Support #############################
 cups
@@ -415,6 +421,9 @@ gtk-doc
 libgtop
 
 adw-gtk3
+alpm-octopi-utils
+chaotic-keyring
+chaotic-mirrorlist
 dxvk-bin
 etcher-bin
 gconf
@@ -425,11 +434,13 @@ ttf-jetbrains-mono
 mkinitcpio-openswap
 oh-my-bash-git
 qt6gtk2
-pamac-aur
+qt-sudo
+octopi
 preload
 stormos-grub-theme
 stormos-conf
 ttf-ms-fonts
+timeshift
 xboxdrv
 yay
 zensu
