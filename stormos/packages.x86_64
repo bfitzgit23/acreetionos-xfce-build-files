@@ -434,13 +434,9 @@ ttf-jetbrains-mono
 mkinitcpio-openswap
 oh-my-bash-git
 qt6gtk2
-<<<<<<< HEAD
 qt-sudo
 octopi
-=======
 qt5-webkit
-pamac-aur
->>>>>>> refs/remotes/origin/main
 preload
 stormos-grub-theme
 stormos-conf
