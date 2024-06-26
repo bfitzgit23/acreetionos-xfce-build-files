@@ -425,6 +425,7 @@ ttf-jetbrains-mono
 mkinitcpio-openswap
 oh-my-bash-git
 qt6gtk2
+qt5-webkit
 pamac-aur
 preload
 stormos-grub-theme
