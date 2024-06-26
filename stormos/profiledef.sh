@@ -25,6 +25,7 @@ file_permissions=(
   ["/usr/local/bin/postinstall.sh"]="0:0:755"	
   ["/usr/bin/StormOS_SR_open"]="0:0:755"
   ["/usr/bin/axelc8"]="0:0:755"
+  ["/usr/bin/stormos-kernel-manager"]="0:0:755"
   ["/usr/bin/wgetm"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
