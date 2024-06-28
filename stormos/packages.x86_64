@@ -324,6 +324,7 @@ zenity
 xmlto
 inetutils
 flex
+python-tomlkit
 python-sphinx
 python-sphinx_rtd_theme
 cpio
