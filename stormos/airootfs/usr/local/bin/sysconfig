@@ -1,0 +1,123 @@
+#!/bin/bash
+# Written By Seeker for StormFish OS/Storm OS
+# Forked and Inspired by Xerolinux-Tool
+
+id=$(shuf -i 10000-32000 -n 1)
+echo "$id"
+
+# Function to create form with yad
+create_yad_form() {
+  yad --plug="$id" --tabnum=$1 --columns=2 --form "$@" &> /tmp/data$1 &
+}
+
+# Maintenance/Updates/Support
+create_yad_form 1 \
+  --field="<b>Step 1. Refresh Mirrors</b>":FBTN "xfce4-terminal -e 'sudo reflector --verbose -l 20 --sort rate --save /etc/pacman.d/mirrorlist'" \
+  --field="<b>Step 2. System Updates</b>":FBTN "xfce4-terminal -e 'sudo pacman -Syyu --noconfirm'" \
+  --field="<b>Step 3. (Optional) Aur Updates</b>":FBTN "xfce4-terminal -e 'yay -Syyu --noconfirm'" \
+  --field="<b>Step 4. (Optional) Arch Keyring Updater</b>":FBTN "xfce4-terminal -e 'upkeyring'" \
+  --field="<b>Step 4a. (Optional) Renew Arch Keyring </b>":FBTN "xfce4-terminal -e 'upsystem'" \
+  --field="<b>Step 5. Install Teamviewer</b>":FBTN "xfce4-terminal -e 'tinstall'" \
+  --field="<b>Step 6. Install Lshw</b>":FBTN "xfce4-terminal -e 'sudo pacman -S lshw --noconfirm'" \
+  --field="<b>Step 7. Install i2c-tools for decode-dimms</b>":FBTN "xfce4-terminal -e 'sudo pacman -S i2c-tools --noconfirm'" \
+  --field="<b>Step 8. Install Nvidia drivers (dkms) after that, (Reboot)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S nvidia-dkms lib32-nvidia-utils lib32-opencl-nvidia lib32-primus_vk lib32-libvdpau cuda-tools cuda opencl-nvidia primus_vk --noconfirm'" \
+  --field="<b>Step 9. Install Nvidia-390xx drivers (dkms) after that (Reboot)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S nvidia-390xx-dkms nvidia-390xx-utils opencl-nvidia-390xx --noconfirm'" \
+  --field="<b>Laptop Section:</b>":btn "" \
+  --field="<b>Step 11. (FOR OPTIMUS/MUX LAPTOPS ONLY!!)  (Warning, automated REBOOT)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S supergfxctl --no-confirm; sudo systemctl enable --now supergfxd; sudo reboot'" \
+  --field="<b>Hardware and Memory Section:</b>":btn "" \
+  --field="<b>Memory Reader (Works on most PCs)</b>":FBTN "xfce4-terminal -H -x 'decode-dimms'" \
+  --field="<b>Memory Reader 2 (Works on some PCs also)</b>":FBTN "xfce4-terminal -H -e 'sudo dmidecode --type memory'" \
+  --field="<b>Lshw for System Info and Decode-dimms for Memreader1.txt to Txt</b>":FBTN "xfce4-terminal -e 'lshwinfo'" \
+  --field="<b>Memory Reader 2 Memory Info to Memreader2.txt</b>":FBTN "xfce4-terminal -e 'memreader2'" \
+  --field="<b>Blank your Screen/s select here </b>":FBTN "xfce4-terminal -e 'blankscreen'" \
+  --field="<b>Block Detail Info</b>":FBTN "xfce4-terminal -H -x 'lsblk'" \
+  --field="<b>Reserved</b>":btn "" \
+  --field="<b>Reserved</b>":btn "" \
+  --field="<b>Reserved</b>":btn ""
+
+# Game/Utilities/Scripts
+create_yad_form 2 \
+  --field="<b>Game Related Utilities:</b>":btn "" \
+  --field="<b>Install Steam Native</b>":FBTN "xfce4-terminal -e 'sudo pacman -S --noconfirm steam-native-runtime gamemode'" \
+  --field="<b>Install Heroic Launcher</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm heroic-games-launcher-bin gamemode'" \
+  --field="<b>Install Lutris Launcher</b>":FBTN "xfce4-terminal -e 'sudo pacman -S --noconfirm lutris gamemode'" \
+  --field="<b>Install ProtonGE Updater</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm proton-community-updater'" \
+  --field="<b>Install Mangohud/Goverlay</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm mangohud goverlay-bin'" \
+  --field="<b>Install Bottles Launcher</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm bottles'" \
+  --field="<b>System Tools/Utilities:</b>":btn "" \
+  --field="<b>Install Warpinator</b>":FBTN "xfce4-terminal -e 'sudo pacman -S warpinator --noconfirm'" \
+  --field="<b>Install Gnome-Calculator</b>":FBTN "xfce4-terminal -e 'sudo pacman -S gnome-calculator --noconfirm'" \
+  --field="<b>Install Flameshot</b>":FBTN "xfce4-terminal -e 'sudo pacman -S flameshot --noconfirm'" \
+  --field="<b>Install Transmission-Gtk</b>":FBTN "xfce4-terminal -e 'sudo pacman -S transmission-gtk --noconfirm'" \
+  --field="<b>Install Thunderbird</b>":FBTN "xfce4-terminal -e 'sudo pacman -S thunderbird --noconfirm'" \
+  --field="<b>Install Xed (Alt) Text Editor</b>":FBTN "xfce4-terminal -e 'sudo pacman -S xed --noconfirm'" \
+  --field="<b>Install Only Office</b>":FBTN "xfce4-terminal -e 'yay -S onlyoffice-bin --noconfirm'" \
+  --field="<b>Install Media Stream Installer </b>":FBTN "xfce4-terminal -e 'minstaller'" \
+  --field="<b>Install Minimize to Tray (Auto Reboot)</b>":FBTN "xfce4-terminal -e 'trayinjector'" \
+  --field="<b>Program Launchers:</b>":btn "" \
+  --field="<b>launch Replace all File/Directory Menu</b>":FBTN "xfce4-terminal -e 'replaceall'" \
+  --field="<b>launch Xfce4 Display Settings</b>":FBTN "xfce4-display-settings" \
+  --field="<b>launch Download Manager Wgetm</b>":FBTN "wgetm" \
+  --field="<b>launch Media Stream Player</b>":FBTN "mstreamplayer" \
+  --field="<b>Create Launcher for Desktop/Panel</b>":FBTN "sudo exo-desktop-item-edit --create-new /usr/share/applications" \
+  --field="<b>launch Duckduckgo Search Engine</b>":FBTN "dsearch" \
+  --field="<b>launch Open Website Link</b>":FBTN "openlink" \
+  --field="<b>Reserved</b>":btn "" \
+  --field="<b>Reserved</b>":btn ""
+
+# Cups/Printer Drivers
+create_yad_form 3 \
+  --field="<b>Step 1. Enable Cups/Printer</b>":FBTN "xfce4-terminal -e 'systemctl enable --now cups'" \
+  --field="<b>Step 2. Cups/Printer Web Interface</b>":FBTN "xdg-open http://127.0.0.1:631" \
+  --field="<b>(Optional) Epson Drivers</b>":FBTN "xfce4-terminal -e 'epsoninstaller'" \
+  --field="<b>HP Drivers (Preinstalled)</b>":btn "eom"
+
+# About Us/Donations/Merchandise
+create_yad_form 4 \
+  --field="<b>Step 1. Install Discord</b>":FBTN "xfce4-terminal -e 'sudo pacman -S discord --noconfirm'" \
+  --field="<b>Step 2. Visit us and Join us in The StormOS Channel</b>":FBTN "xdg-open https://discord.gg/36JkjDVUP9" \
+  --field="<b>Distrowatch</b>":FBTN "xdg-open https://distrowatch.com" \
+  --field="<b>Merchandise Store</b>":FBTN "xdg-open https://ebuzz-central.creator-spring.com/" \
+  --field="<b>Gofund.me Page</b>":FBTN "xdg-open https://gofund.me/d954872d" \
+  --field="<b>Patreon Page</b>":FBTN "xdg-open https://patreon.com/benfitzpatrick" \
+  --field="<b>Visit The StormOS Site (Soon to Change Hosts)</b>":FBTN "WIP" \
+  --field="<b>Visit The StormOS Sourceforge Site for Direct Downloads and Info on StormOS</b>":FBTN "xdg-open https://sourceforge.net/projects/hackman-linux/files/" \
+  --field="<b>Or Visit The StormFish OS Site</b>":FBTN "xdg-open https://sourceforge.net/projects/stormfish-os/" \
+  --field="<b>StormOS ReadMe</b>":FBTN '/usr/local/bin/data/about' \
+  --field="<b>Reserved</b>":btn "" \
+  --field="Reserved:BTN" "eom"
+
+# Arch University
+create_yad_form 5 \
+  --field="<b>StormOS Arch Commands</b>":FBTN '/usr/local/bin/data/commands' \
+  --field="<b>Visit The Arch Wiki</b>":FBTN "xdg-open https://wiki.archlinux.org/" \
+  --field="<b>Visit The Arch Website</b>":FBTN "xdg-open https://archlinux.org/" \
+  --field="<b>Explanation of Arch Commands</b>":FBTN "xdg-open https://www.geeksforgeeks.org/pacman-command-in-arch-linux/#:~:text=Pacman%20is%20a%20package%20manager,a%20text%2Dbased%20package%20database." \
+  --field="<b>Visit 3rd Party Software for Arch AUR Website</b>":FBTN "xdg-open https://aur.archlinux.org/" \
+  --field="<b>Beginner Video Tutorial on Pacman</b>":FBTN "xdg-open https://www.youtube.com/watch?v=TQaHfQrwnXo" \
+  --field="<b>Novice/Advanced Video Tutorial on Pacman</b>":FBTN "xdg-open https://www.youtube.com/watch?v=-dEuXTMzRKs" \
+  --field="<b>Reserved</b>":btn "" \
+  --field="Reserved:BTN" "eom"
+
+# Main Notebook Interface
+yad --notebook --key="$id" --center --tab-pos=left --width=480 --height=175 \
+  --tab="<b>(1).Maintenance/Updates/Support</b>" \
+  --tab="<b>(2).Game/Utilities/Scripts</b>" \
+  --tab="<b>(3).Cups/Printer Drivers</b>" \
+  --tab="<b>(4).About Us/Donations/Merchandise</b>" \
+  --tab="<b>(5).Arch University</b>" \
+  --image=/usr/share/icons/scalable/apps/stormos.png \
+  --title="Storm OS Utilities Program v5.0.0.2" \
+  --text="<b>Greetings $USER. Use this Utility tool to Maintain and Upgrade your Storm OS</b>" \
+  --justify=center \
+  --button="Logout":"xfce4-session-logout" \
+  --button="System Info by Lshw":"xfce4-terminal -H -x sudo lshw -short" \
+  --button="System Resources via Top":"xfce4-terminal -H -x top" \
+  --button="Update Utility Program":"xfce4-terminal -e 'utilityup'" \
+  --button="Add/Remove Software":"/usr/bin/octopi %U" \
+  --button="Add Utility Tool to Tray":"alltray -H sysconfig"
+
+# Exit Handling
+case $? in
+  0|1|70|252) exit ;;
+esac
