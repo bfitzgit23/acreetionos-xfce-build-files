@@ -292,6 +292,7 @@ git
 gnome-keyring
 gnome-disk-utility
 gamemode
+handbrake-cli
 htop
 imagemagick
 lib32-gamemode
