@@ -6,5 +6,5 @@ Comment=rank your mirrorlist with ease
 Exec=/usr/bin/StormOS_Reflector
 Icon=4kvideodownloader
 Path=
-Terminal=false
+Terminal=true
 StartupNotify=false

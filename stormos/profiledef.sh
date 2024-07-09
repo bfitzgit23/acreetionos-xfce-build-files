@@ -27,6 +27,7 @@ file_permissions=(
   ["/usr/bin/axelc8"]="0:0:755"
   ["/usr/bin/stormos-kernel-manager"]="0:0:755"
   ["/usr/share/archlinux-kernel-manager/archlinux-kernel-manager.py"]="0:0:755"
+  ["/usr/bin/StormOS_Reflector"]="0:0:755"
   ["/usr/bin/wgetm"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"

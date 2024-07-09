@@ -425,6 +425,10 @@ adw-gtk3
 alpm-octopi-utils
 chaotic-keyring
 chaotic-mirrorlist
+cachyos-keyring
+cachyos-mirrorlist
+cachyos-v3-mirrorlist
+cachyos-v4-mirrorlist
 dxvk-bin
 etcher-bin
 gconf
