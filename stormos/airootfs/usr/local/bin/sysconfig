@@ -1,123 +1,190 @@
-#!/bin/bash
-# Written By Seeker for StormFish OS/Storm OS
-# Forked and Inspired by Xerolinux-Tool
+#!/usr/bin/env python3
 
-id=$(shuf -i 10000-32000 -n 1)
-echo "$id"
+import os
+import gi
 
-# Function to create form with yad
-create_yad_form() {
-  yad --plug="$id" --tabnum=$1 --columns=2 --form "$@" &> /tmp/data$1 &
-}
+# Ensure GTK 3 is used by setting the GI_TYPELIB_PATH to the correct location
+os.environ['GI_TYPELIB_PATH'] = '/usr/lib/girepository-1.0'
 
-# Maintenance/Updates/Support
-create_yad_form 1 \
-  --field="<b>Step 1. Refresh Mirrors</b>":FBTN "xfce4-terminal -e 'sudo reflector --verbose -l 20 --sort rate --save /etc/pacman.d/mirrorlist'" \
-  --field="<b>Step 2. System Updates</b>":FBTN "xfce4-terminal -e 'sudo pacman -Syyu --noconfirm'" \
-  --field="<b>Step 3. (Optional) Aur Updates</b>":FBTN "xfce4-terminal -e 'yay -Syyu --noconfirm'" \
-  --field="<b>Step 4. (Optional) Arch Keyring Updater</b>":FBTN "xfce4-terminal -e 'upkeyring'" \
-  --field="<b>Step 4a. (Optional) Renew Arch Keyring </b>":FBTN "xfce4-terminal -e 'upsystem'" \
-  --field="<b>Step 5. Install Teamviewer</b>":FBTN "xfce4-terminal -e 'tinstall'" \
-  --field="<b>Step 6. Install Lshw</b>":FBTN "xfce4-terminal -e 'sudo pacman -S lshw --noconfirm'" \
-  --field="<b>Step 7. Install i2c-tools for decode-dimms</b>":FBTN "xfce4-terminal -e 'sudo pacman -S i2c-tools --noconfirm'" \
-  --field="<b>Step 8. Install Nvidia drivers (dkms) after that, (Reboot)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S nvidia-dkms lib32-nvidia-utils lib32-opencl-nvidia lib32-primus_vk lib32-libvdpau cuda-tools cuda opencl-nvidia primus_vk --noconfirm'" \
-  --field="<b>Step 9. Install Nvidia-390xx drivers (dkms) after that (Reboot)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S nvidia-390xx-dkms nvidia-390xx-utils opencl-nvidia-390xx --noconfirm'" \
-  --field="<b>Laptop Section:</b>":btn "" \
-  --field="<b>Step 11. (FOR OPTIMUS/MUX LAPTOPS ONLY!!)  (Warning, automated REBOOT)</b>":FBTN "xfce4-terminal -e 'sudo pacman -S supergfxctl --no-confirm; sudo systemctl enable --now supergfxd; sudo reboot'" \
-  --field="<b>Hardware and Memory Section:</b>":btn "" \
-  --field="<b>Memory Reader (Works on most PCs)</b>":FBTN "xfce4-terminal -H -x 'decode-dimms'" \
-  --field="<b>Memory Reader 2 (Works on some PCs also)</b>":FBTN "xfce4-terminal -H -e 'sudo dmidecode --type memory'" \
-  --field="<b>Lshw for System Info and Decode-dimms for Memreader1.txt to Txt</b>":FBTN "xfce4-terminal -e 'lshwinfo'" \
-  --field="<b>Memory Reader 2 Memory Info to Memreader2.txt</b>":FBTN "xfce4-terminal -e 'memreader2'" \
-  --field="<b>Blank your Screen/s select here </b>":FBTN "xfce4-terminal -e 'blankscreen'" \
-  --field="<b>Block Detail Info</b>":FBTN "xfce4-terminal -H -x 'lsblk'" \
-  --field="<b>Reserved</b>":btn "" \
-  --field="<b>Reserved</b>":btn "" \
-  --field="<b>Reserved</b>":btn ""
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
 
-# Game/Utilities/Scripts
-create_yad_form 2 \
-  --field="<b>Game Related Utilities:</b>":btn "" \
-  --field="<b>Install Steam Native</b>":FBTN "xfce4-terminal -e 'sudo pacman -S --noconfirm steam-native-runtime gamemode'" \
-  --field="<b>Install Heroic Launcher</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm heroic-games-launcher-bin gamemode'" \
-  --field="<b>Install Lutris Launcher</b>":FBTN "xfce4-terminal -e 'sudo pacman -S --noconfirm lutris gamemode'" \
-  --field="<b>Install ProtonGE Updater</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm proton-community-updater'" \
-  --field="<b>Install Mangohud/Goverlay</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm mangohud goverlay-bin'" \
-  --field="<b>Install Bottles Launcher</b>":FBTN "xfce4-terminal -e 'yay -S --noconfirm bottles'" \
-  --field="<b>System Tools/Utilities:</b>":btn "" \
-  --field="<b>Install Warpinator</b>":FBTN "xfce4-terminal -e 'sudo pacman -S warpinator --noconfirm'" \
-  --field="<b>Install Gnome-Calculator</b>":FBTN "xfce4-terminal -e 'sudo pacman -S gnome-calculator --noconfirm'" \
-  --field="<b>Install Flameshot</b>":FBTN "xfce4-terminal -e 'sudo pacman -S flameshot --noconfirm'" \
-  --field="<b>Install Transmission-Gtk</b>":FBTN "xfce4-terminal -e 'sudo pacman -S transmission-gtk --noconfirm'" \
-  --field="<b>Install Thunderbird</b>":FBTN "xfce4-terminal -e 'sudo pacman -S thunderbird --noconfirm'" \
-  --field="<b>Install Xed (Alt) Text Editor</b>":FBTN "xfce4-terminal -e 'sudo pacman -S xed --noconfirm'" \
-  --field="<b>Install Only Office</b>":FBTN "xfce4-terminal -e 'yay -S onlyoffice-bin --noconfirm'" \
-  --field="<b>Install Media Stream Installer </b>":FBTN "xfce4-terminal -e 'minstaller'" \
-  --field="<b>Install Minimize to Tray (Auto Reboot)</b>":FBTN "xfce4-terminal -e 'trayinjector'" \
-  --field="<b>Program Launchers:</b>":btn "" \
-  --field="<b>launch Replace all File/Directory Menu</b>":FBTN "xfce4-terminal -e 'replaceall'" \
-  --field="<b>launch Xfce4 Display Settings</b>":FBTN "xfce4-display-settings" \
-  --field="<b>launch Download Manager Wgetm</b>":FBTN "wgetm" \
-  --field="<b>launch Media Stream Player</b>":FBTN "mstreamplayer" \
-  --field="<b>Create Launcher for Desktop/Panel</b>":FBTN "sudo exo-desktop-item-edit --create-new /usr/share/applications" \
-  --field="<b>launch Duckduckgo Search Engine</b>":FBTN "dsearch" \
-  --field="<b>launch Open Website Link</b>":FBTN "openlink" \
-  --field="<b>Reserved</b>":btn "" \
-  --field="<b>Reserved</b>":btn ""
+import subprocess
 
-# Cups/Printer Drivers
-create_yad_form 3 \
-  --field="<b>Step 1. Enable Cups/Printer</b>":FBTN "xfce4-terminal -e 'systemctl enable --now cups'" \
-  --field="<b>Step 2. Cups/Printer Web Interface</b>":FBTN "xdg-open http://127.0.0.1:631" \
-  --field="<b>(Optional) Epson Drivers</b>":FBTN "xfce4-terminal -e 'epsoninstaller'" \
-  --field="<b>HP Drivers (Preinstalled)</b>":btn "eom"
+class MainWindow(Gtk.Window):
+    def __init__(self):
+        Gtk.Window.__init__(self, title="StormOS Utilities Program v5.0.0.2")
+        self.set_border_width(10)
+        self.set_default_size(600, 400)
 
-# About Us/Donations/Merchandise
-create_yad_form 4 \
-  --field="<b>Step 1. Install Discord</b>":FBTN "xfce4-terminal -e 'sudo pacman -S discord --noconfirm'" \
-  --field="<b>Step 2. Visit us and Join us in The StormOS Channel</b>":FBTN "xdg-open https://discord.gg/36JkjDVUP9" \
-  --field="<b>Distrowatch</b>":FBTN "xdg-open https://distrowatch.com" \
-  --field="<b>Merchandise Store</b>":FBTN "xdg-open https://ebuzz-central.creator-spring.com/" \
-  --field="<b>Gofund.me Page</b>":FBTN "xdg-open https://gofund.me/d954872d" \
-  --field="<b>Patreon Page</b>":FBTN "xdg-open https://patreon.com/benfitzpatrick" \
-  --field="<b>Visit The StormOS Site (Soon to Change Hosts)</b>":FBTN "WIP" \
-  --field="<b>Visit The StormOS Sourceforge Site for Direct Downloads and Info on StormOS</b>":FBTN "xdg-open https://sourceforge.net/projects/hackman-linux/files/" \
-  --field="<b>Or Visit The StormFish OS Site</b>":FBTN "xdg-open https://sourceforge.net/projects/stormfish-os/" \
-  --field="<b>StormOS ReadMe</b>":FBTN '/usr/local/bin/data/about' \
-  --field="<b>Reserved</b>":btn "" \
-  --field="Reserved:BTN" "eom"
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(vbox)
 
-# Arch University
-create_yad_form 5 \
-  --field="<b>StormOS Arch Commands</b>":FBTN '/usr/local/bin/data/commands' \
-  --field="<b>Visit The Arch Wiki</b>":FBTN "xdg-open https://wiki.archlinux.org/" \
-  --field="<b>Visit The Arch Website</b>":FBTN "xdg-open https://archlinux.org/" \
-  --field="<b>Explanation of Arch Commands</b>":FBTN "xdg-open https://www.geeksforgeeks.org/pacman-command-in-arch-linux/#:~:text=Pacman%20is%20a%20package%20manager,a%20text%2Dbased%20package%20database." \
-  --field="<b>Visit 3rd Party Software for Arch AUR Website</b>":FBTN "xdg-open https://aur.archlinux.org/" \
-  --field="<b>Beginner Video Tutorial on Pacman</b>":FBTN "xdg-open https://www.youtube.com/watch?v=TQaHfQrwnXo" \
-  --field="<b>Novice/Advanced Video Tutorial on Pacman</b>":FBTN "xdg-open https://www.youtube.com/watch?v=-dEuXTMzRKs" \
-  --field="<b>Reserved</b>":btn "" \
-  --field="Reserved:BTN" "eom"
+        notebook = Gtk.Notebook()
+        notebook.set_tab_pos(Gtk.PositionType.LEFT)
+        vbox.pack_start(notebook, True, True, 0)
 
-# Main Notebook Interface
-yad --notebook --key="$id" --center --tab-pos=left --width=480 --height=175 \
-  --tab="<b>(1).Maintenance/Updates/Support</b>" \
-  --tab="<b>(2).Game/Utilities/Scripts</b>" \
-  --tab="<b>(3).Cups/Printer Drivers</b>" \
-  --tab="<b>(4).About Us/Donations/Merchandise</b>" \
-  --tab="<b>(5).Arch University</b>" \
-  --image=/usr/share/icons/scalable/apps/stormos.png \
-  --title="Storm OS Utilities Program v5.0.0.2" \
-  --text="<b>Greetings $USER. Use this Utility tool to Maintain and Upgrade your Storm OS</b>" \
-  --justify=center \
-  --button="Logout":"xfce4-session-logout" \
-  --button="System Info by Lshw":"xfce4-terminal -H -x sudo lshw -short" \
-  --button="System Resources via Top":"xfce4-terminal -H -x top" \
-  --button="Update Utility Program":"xfce4-terminal -e 'utilityup'" \
-  --button="Add/Remove Software":"/usr/bin/octopi %U" \
-  --button="Add Utility Tool to Tray":"alltray -H sysconfig"
+        self.create_maintenance_tab(notebook)
+        self.create_game_utilities_tab(notebook)
+        self.create_printer_tab(notebook)
+        self.create_about_us_tab(notebook)
+        self.create_arch_university_tab(notebook)
 
-# Exit Handling
-case $? in
-  0|1|70|252) exit ;;
-esac
+        self.add_bottom_buttons(vbox)
+
+    def create_button_with_icon(self, label, command, icon_name):
+        button = Gtk.Button()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        label_widget = Gtk.Label(label=label)
+        box.pack_start(image, False, False, 5)
+        box.pack_start(label_widget, False, False, 5)
+        button.add(box)
+        button.connect("clicked", self.run_command, command)
+        return button
+
+    def run_command(self, widget, command):
+        subprocess.Popen(command, shell=True)
+
+    def create_maintenance_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Step 1. Refresh Mirrors", "xfce4-terminal -e 'sudo reflector --verbose -l 20 --sort rate --save /etc/pacman.d/mirrorlist'", "view-refresh"),
+            ("Step 2. System Updates", "xfce4-terminal -e 'sudo pacman -Syyu --noconfirm'", "system-software-update"),
+            ("Step 3. (Optional) Aur Updates", "xfce4-terminal -e 'yay -Syyu --noconfirm'", "system-software-update"),
+            ("Step 4. (Optional) Arch Keyring Updater", "xfce4-terminal -e 'upkeyring'", "system-lock-screen"),
+            ("Step 4a. (Optional) Renew Arch Keyring", "xfce4-terminal -e 'upsystem'", "system-lock-screen"),
+            ("Step 5. Install Teamviewer", "xfce4-terminal -e 'tinstall'", "applications-internet"),
+            ("Step 6. Install Lshw", "xfce4-terminal -e 'sudo pacman -S lshw --noconfirm'", "applications-system"),
+            ("Step 7. Install i2c-tools for decode-dimms", "xfce4-terminal -e 'sudo pacman -S i2c-tools --noconfirm'", "applications-system"),
+            ("Step 8. Install Nvidia drivers (dkms) after that, (Reboot)", "xfce4-terminal -e 'sudo pacman -S nvidia-dkms lib32-nvidia-utils lib32-opencl-nvidia lib32-primus_vk lib32-libvdpau cuda-tools cuda opencl-nvidia primus_vk --noconfirm'", "video-display"),
+            ("Step 9. Install Nvidia-390xx drivers (dkms) after that (Reboot)", "xfce4-terminal -e 'sudo pacman -S nvidia-390xx-dkms nvidia-390xx-utils opencl-nvidia-390xx --noconfirm'", "video-display")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Maintenance/Updates/Support</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_game_utilities_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Install Steam Native", "xfce4-terminal -e 'sudo pacman -S --noconfirm steam-native-runtime gamemode'", "applications-games"),
+            ("Install Heroic Launcher", "xfce4-terminal -e 'yay -S --noconfirm heroic-games-launcher-bin gamemode'", "applications-games"),
+            ("Install Lutris Launcher", "xfce4-terminal -e 'sudo pacman -S --noconfirm lutris gamemode'", "applications-games"),
+            ("Install ProtonGE Updater", "xfce4-terminal -e 'yay -S --noconfirm proton-community-updater'", "applications-games"),
+            ("Install Mangohud/Goverlay", "xfce4-terminal -e 'yay -S --noconfirm mangohud goverlay-bin'", "applications-games"),
+            ("Install Bottles Launcher", "xfce4-terminal -e 'yay -S --noconfirm bottles'", "applications-games"),
+            ("Install Warpinator", "xfce4-terminal -e 'sudo pacman -S warpinator --noconfirm'", "applications-internet"),
+            ("Install Gnome-Calculator", "xfce4-terminal -e 'sudo pacman -S gnome-calculator --noconfirm'", "accessories-calculator"),
+            ("Install Flameshot", "xfce4-terminal -e 'sudo pacman -S flameshot --noconfirm'", "accessories-screenshot"),
+            ("Install Transmission-Gtk", "xfce4-terminal -e 'sudo pacman -S transmission-gtk --noconfirm'", "network-workgroup"),
+            ("Install Thunderbird", "xfce4-terminal -e 'sudo pacman -S thunderbird --noconfirm'", "internet-mail"),
+            ("Install Xed (Alt) Text Editor", "xfce4-terminal -e 'sudo pacman -S xed --noconfirm'", "accessories-text-editor"),
+            ("Install Only Office", "xfce4-terminal -e 'yay -S onlyoffice-bin --noconfirm'", "applications-office"),
+            ("Install Media Stream Installer", "xfce4-terminal -e 'minstaller'", "multimedia-video-player"),
+            ("Install Minimize to Tray (Auto Reboot)", "xfce4-terminal -e 'trayinjector'", "system-run")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Game/Utilities/Scripts</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_printer_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Enable Cups/Printer", "xfce4-terminal -e 'systemctl enable --now cups'", "printer"),
+            ("Cups/Printer Web Interface", "xdg-open http://127.0.0.1:631", "applications-internet"),
+            ("(Optional) Epson Drivers", "xfce4-terminal -e 'epsoninstaller'", "printer"),
+            ("HP Drivers (Preinstalled)", "eom", "printer")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Cups/Printer Drivers</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_about_us_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Install Discord", "xfce4-terminal -e 'sudo pacman -S discord --noconfirm'", "internet-chat"),
+            ("Visit us and Join us in The StormOS Channel", "xdg-open https://discord.gg/36JkjDVUP9", "internet-web-browser"),
+            ("Distrowatch", "xdg-open https://distrowatch.com", "internet-web-browser"),
+            #("Merchandise Store", "xdg-open https://ebuzz-central.creator-spring.com/", "internet-web-browser"),
+            ("Gofund.me Page", "xdg-open https://gofund.me/d954872d", "internet-web-browser"),
+            ("Patreon Page", "xdg-open https://patreon.com/benfitzpatrick", "internet-web-browser"),
+            ("Visit The StormOS Site (Soon to Change Hosts)", "WIP", "internet-web-browser"),
+            ("Visit The StormOS Sourceforge Site for Direct Downloads and Info on StormOS", "xdg-open https://sourceforge.net/projects/hackman-linux/files/", "internet-web-browser"),
+            #("Or Visit The StormFish OS Site", "xdg-open https://sourceforge.net/projects/stormfish-os/", "internet-web-browser"),
+            ("StormOS ReadMe", '/usr/local/bin/data/about', "text-x-generic")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>About Us/Donations/Merchandise</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_arch_university_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("StormOS Arch Commands", '/usr/local/bin/data/commands', "utilities-terminal"),
+            ("Visit The Arch Wiki", "xdg-open https://wiki.archlinux.org/", "internet-web-browser"),
+            ("Visit The Arch Website", "xdg-open https://archlinux.org/", "internet-web-browser"),
+            ("Explanation of Arch Commands", "xdg-open https://www.geeksforgeeks.org/pacman-command-in-arch-linux/#:~:text=Pacman%20is%20a%20package%20manager,a%20text%2Dbased%20package%20database.", "internet-web-browser"),
+            ("Visit 3rd Party Software for Arch AUR Website", "xdg-open https://aur.archlinux.org/", "internet-web-browser"),
+            ("Beginner Video Tutorial on Pacman", "xdg-open https://www.youtube.com/watch?v=TQaHfQrwnXo", "applications-multimedia"),
+            ("Novice/Advanced Video Tutorial on Pacman", "xdg-open https://www.youtube.com/watch?v=-dEuXTMzRKs", "applications-multimedia")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Arch University</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def add_bottom_buttons(self, vbox):
+        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        vbox.pack_start(button_box, False, False, 0)
+
+        buttons = [
+            ("Logout", "xfce4-session-logout", "system-log-out"),
+            ("System Info by Lshw", "xfce4-terminal -H -x sudo lshw -short", "system-help"),
+            ("System Resources via Top", "xfce4-terminal -H -x top", "utilities-system-monitor"),
+            ("Update Utility Program", "xfce4-terminal -e 'utilityup'", "view-refresh"),
+            ("Add/Remove Software", "/usr/bin/octopi %U", "system-software-install"),
+            ("Add Utility Tool to Tray", "alltray -H sysconfig", "utilities-terminal")
+        ]
+
+        for label, command, icon_name in buttons:
+            button = self.create_button_with_icon(label, command, icon_name)
+            button_box.pack_start(button, True, True, 0)
+
+win = MainWindow()
+win.connect("destroy", Gtk.main_quit)
+win.show_all()
+Gtk.main()
