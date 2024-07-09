@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+
+import os
+import gi
+
+# Ensure GTK 3 is used by setting the GI_TYPELIB_PATH to the correct location
+os.environ['GI_TYPELIB_PATH'] = '/usr/lib/girepository-1.0'
+
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+
+import subprocess
+
+class MainWindow(Gtk.Window):
+    def __init__(self):
+        Gtk.Window.__init__(self, title="StormOS Utilities Program v5.0.0.2")
+        self.set_border_width(10)
+        self.set_default_size(600, 400)
+
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.add(hbox)
+
+        notebook_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        hbox.pack_start(notebook_vbox, True, True, 0)
+
+        notebook = Gtk.Notebook()
+        notebook.set_tab_pos(Gtk.PositionType.LEFT)
+        notebook_vbox.pack_start(notebook, True, True, 0)
+
+        self.create_maintenance_tab(notebook)
+        self.create_game_utilities_tab(notebook)
+        self.create_printer_tab(notebook)
+        self.create_arch_university_tab(notebook)
+        self.create_about_us_tab(notebook)
+
+    def create_button_with_icon(self, label, command, icon_name):
+        button = Gtk.Button()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        label_widget = Gtk.Label(label=label)
+        box.pack_start(image, False, False, 5)
+        box.pack_start(label_widget, False, False, 5)
+        button.add(box)
+        button.connect("clicked", self.run_command, command)
+        return button
+
+    def run_command(self, widget, command):
+        subprocess.Popen(command, shell=True)
+
+    def create_maintenance_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Step 1. Refresh Mirrors", "xfce4-terminal -e 'sudo reflector --verbose -l 20 --sort rate --save /etc/pacman.d/mirrorlist'", "view-refresh"),
+            ("Step 2. System Updates", "xfce4-terminal -e 'sudo pacman -Syyu --noconfirm'", "system-software-update"),
+            ("Step 3. (Optional) Aur Updates", "xfce4-terminal -e 'yay -Syyu --noconfirm'", "system-software-update"),
+            ("Step 4. (Optional) Arch Keyring Updater", "xfce4-terminal -e 'upkeyring'", "system-lock-screen"),
+            ("Step 4a. (Optional) Renew Arch Keyring", "xfce4-terminal -e 'upsystem'", "system-lock-screen"),
+            ("Step 5. Install Teamviewer", "xfce4-terminal -e 'tinstall'", "applications-internet"),
+            ("Step 6. Install Lshw", "xfce4-terminal -e 'sudo pacman -S lshw --noconfirm'", "applications-system"),
+            ("Step 7. Install i2c-tools for decode-dimms", "xfce4-terminal -e 'sudo pacman -S i2c-tools --noconfirm'", "applications-system"),
+            ("Step 8. Install Nvidia drivers (dkms) after that, (Reboot)", "xfce4-terminal -e 'sudo pacman -S nvidia-dkms lib32-nvidia-utils lib32-opencl-nvidia lib32-primus_vk lib32-libvdpau cuda-tools cuda opencl-nvidia primus_vk --noconfirm'", "video-display"),
+            ("Step 9. Install Nvidia-390xx drivers (dkms) after that (Reboot)", "xfce4-terminal -e 'sudo pacman -S nvidia-390xx-dkms nvidia-390xx-utils opencl-nvidia-390xx --noconfirm'", "video-display")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Maintenance/Updates/Support</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_game_utilities_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Install Steam Native", "xfce4-terminal -e 'sudo pacman -S --noconfirm steam-native-runtime gamemode'", "applications-games"),
+            ("Install Heroic Launcher", "xfce4-terminal -e 'yay -S --noconfirm heroic-games-launcher-bin gamemode'", "applications-games"),
+            ("Install Lutris Launcher", "xfce4-terminal -e 'sudo pacman -S --noconfirm lutris gamemode'", "applications-games"),
+            ("Install ProtonGE Updater", "xfce4-terminal -e 'yay -S --noconfirm proton-community-updater'", "applications-games"),
+            ("Install Mangohud/Goverlay", "xfce4-terminal -e 'yay -S --noconfirm mangohud goverlay-bin'", "applications-games"),
+            ("Install Bottles Launcher", "xfce4-terminal -e 'yay -S --noconfirm bottles'", "applications-games"),
+            ("Install Warpinator", "xfce4-terminal -e 'sudo pacman -S warpinator --noconfirm'", "applications-internet"),
+            ("Install Gnome-Calculator", "xfce4-terminal -e 'sudo pacman -S gnome-calculator --noconfirm'", "accessories-calculator"),
+            ("Install Flameshot", "xfce4-terminal -e 'sudo pacman -S flameshot --noconfirm'", "accessories-screenshot"),
+            ("Install Transmission-Gtk", "xfce4-terminal -e 'sudo pacman -S transmission-gtk --noconfirm'", "network-workgroup"),
+            ("Install Thunderbird", "xfce4-terminal -e 'sudo pacman -S thunderbird --noconfirm'", "internet-mail"),
+            ("Install Xed (Alt) Text Editor", "xfce4-terminal -e 'sudo pacman -S xed --noconfirm'", "accessories-text-editor"),
+            ("Install Only Office", "xfce4-terminal -e 'yay -S onlyoffice-bin --noconfirm'", "applications-office"),
+            ("Install Media Stream Installer", "xfce4-terminal -e 'minstaller'", "multimedia-video-player"),
+            ("Install Minimize to Tray (Auto Reboot)", "xfce4-terminal -e 'trayinjector'", "system-run")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Game/Utilities/Scripts</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_printer_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Enable Cups/Printer", "xfce4-terminal -e 'systemctl enable --now cups'", "printer"),
+            ("Cups/Printer Web Interface", "xdg-open http://127.0.0.1:631", "applications-internet"),
+            ("(Optional) Epson Drivers", "xfce4-terminal -e 'epsoninstaller'", "printer"),
+            ("HP Drivers (Preinstalled)", "eom", "printer")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>Cups/Printer Drivers</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_arch_university_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("StormOS Arch Commands", '/usr/local/bin/data/commands', "utilities-terminal"),
+            ("Visit The Arch Wiki", "xdg-open https://wiki.archlinux.org/", "internet-web-browser"),
+            ("Visit The Arch Website", "xdg-open https://archlinux.org/", "internet-web-browser"),
+            ("Explanation of Arch Commands", "xdg-open https://www.geeksforgeeks.org/pacman-command-in-arch-linux/#:~:text=Pacman%20is%20a%20package%20manager,a%20text%2Dbased%20package%20database.", "internet-web-browser"),
+            ("Visit 3rd Party Software for Arch AUR Website", "xdg-open https://aur.archlinux.org/", "internet-web-browser"),
+            ("Beginner Video Tutorial on Pacman", "xdg-open https://www.youtube.com/watch?v=TQaHfQrwnXo", "applications-multimedia"),
+            ("Novice/Advanced Video Tutorial on Pacman", "xdg-open https://www.youtube.com/watch?v=-dEuXTMzRKs", "applications-multimedia")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        self.add_left_buttons(grid, len(commands))
+
+        label = Gtk.Label(label="<b>Arch University</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def create_about_us_tab(self, notebook):
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+
+        commands = [
+            ("Install Discord", "xfce4-terminal -e 'sudo pacman -S discord --noconfirm'", "internet-chat"),
+            ("Visit us and Join us in The StormOS Channel", "xdg-open https://discord.gg/36JkjDVUP9", "internet-web-browser"),
+            ("Distrowatch", "xdg-open https://distrowatch.com", "internet-web-browser"),
+            #("Merchandise Store", "xdg-open https://ebuzz-central.creator-spring.com/", "internet-web-browser"),
+            ("Gofund.me Page", "xdg-open https://gofund.me/d954872d", "internet-web-browser"),
+            ("Patreon Page", "xdg-open https://patreon.com/benfitzpatrick", "internet-web-browser"),
+            ("Visit The StormOS Site (Soon to Change Hosts)", "WIP", "internet-web-browser"),
+            ("Visit The StormOS Sourceforge Site for Direct Downloads and Info on StormOS", "xdg-open https://sourceforge.net/projects/hackman-linux/files/", "internet-web-browser"),
+            #("Or Visit The StormFish OS Site", "xdg-open https://sourceforge.net/projects/stormfish-os/", "internet-web-browser"),
+            ("StormOS ReadMe", '/usr/local/bin/data/about', "text-x-generic")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(commands):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, i, 1, 1)
+
+        label = Gtk.Label(label="<b>About Us/Donations/Merchandise</b>", use_markup=True)
+        notebook.append_page(grid, label)
+
+    def add_left_buttons(self, grid, start_index):
+        buttons = [
+            ("Logout", "xfce4-session-logout", "system-log-out"),
+            ("System Info by Lshw", "xfce4-terminal -H -x sudo lshw -short", "system-help"),
+            ("System Resources via Top", "xfce4-terminal -H -x top", "utilities-system-monitor"),
+            ("Update Utility Program", "xfce4-terminal -e 'utilityup'", "view-refresh"),
+            ("Add/Remove Software", "/usr/bin/octopi %U", "system-software-install"),
+            ("Add Utility Tool to Tray", "alltray -H sysconfig", "utilities-terminal")
+        ]
+
+        for i, (label, command, icon_name) in enumerate(buttons):
+            button = self.create_button_with_icon(label, command, icon_name)
+            grid.attach(button, 0, start_index + i, 1, 1)
+
+win = MainWindow()
+win.connect("destroy", Gtk.main_quit)
+win.show_all()
+Gtk.main()
