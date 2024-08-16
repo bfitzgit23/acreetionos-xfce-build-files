@@ -159,14 +159,6 @@ opencl-clover-mesa
 opencl-rusticl-mesa
 lib32-mesa-libgl
 open-vm-tools
-nvidia-dkms
-nvidia-utils
-lib32-nvidia-utils
-nvidia-settings
-opencl-nvidia
-libxnvctrl
-libva-nvidia-driver
-lib32-opencl-nvidia
 
 # Radeon
 vulkan-radeon
@@ -283,13 +275,14 @@ autoconf
 automake
 chromium
 dialog
+engrampa
 ffmpeg
 flac
 fontconfig
 frei0r-plugins
 glances
 git
-gnome-keyring
+#gnome-keyring
 gnome-disk-utility
 gamemode
 handbrake-cli
@@ -423,12 +416,6 @@ libgtop
 
 adw-gtk3
 alpm-octopi-utils
-chaotic-keyring
-chaotic-mirrorlist
-cachyos-keyring
-cachyos-mirrorlist
-cachyos-v3-mirrorlist
-cachyos-v4-mirrorlist
 dxvk-bin
 etcher-bin
 gconf
@@ -445,6 +432,7 @@ qt5-webkit
 preload
 stormos-grub-theme
 stormos-conf
+stormos-xfce-config
 ttf-ms-fonts
 timeshift
 xboxdrv

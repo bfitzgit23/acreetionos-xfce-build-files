@@ -1,59 +1,1724 @@
 #!/usr/bin/env python3
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-import mimetypes
-import cairo
-import gi
 import subprocess
+import importlib
+import sys
+import logging
+import datetime
+import shutil
+import os
+import mimetypes
 import time
 import re
-import os
 import threading
 import signal
 import math
 import atexit
-import logging
-import sys
 import select
 import fcntl
-import atexit
 import multiprocessing
+import tempfile
 import psutil
-
-
-
-
-gi.require_version('Gtk', '3.0')
-gi.require_version('AppIndicator3', '0.1')
-gi.require_version('Gst', '1.0')
-from gi.repository import Gtk, Gdk, GLib, AppIndicator3, Gst, GdkX11, GdkPixbuf, Pango
-gi.require_version('GstVideo', '1.0')
-from gi.repository import Gst, GstVideo, GdkX11, GstVideo
 from datetime import datetime, timedelta
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
 
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Create a unique lock file
-lock_file_path = '/tmp/screen_recorder_indicator.lock'
-lock_file = open(lock_file_path, 'w')
+# Cache for detected package manager
+cached_package_manager = None
 
+def detect_package_manager():
+    global cached_package_manager
+    if cached_package_manager:
+        return cached_package_manager
+
+    package_managers = {
+        'apt': 'debian-based',
+        'pacman': 'arch-based',
+        'dnf': 'fedora',
+        'zypper': 'opensuse',
+        'eopkg': 'solus',
+        'emerge': 'gentoo'
+    }
+    for pm in package_managers:
+        if shutil.which(pm):
+            logging.info(f"Detected package manager: {pm}")
+            cached_package_manager = pm
+            return pm
+    logging.error("Unable to detect package manager. Unsupported distribution.")
+    return None
+
+#---------------------------------Mini--Code--------------------------------------------------
+
+import subprocess
+import logging
+import shutil
+import sys
+import os
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def detect_os():
+    os_info = {}
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "=" in line:
+                    key, value = line.strip().split("=", 1)
+                    os_info[key] = value.strip('"')
+    except FileNotFoundError:
+        logging.error("Unable to read /etc/os-release. Unsupported distribution.")
+    return os_info
+
+def detect_package_manager():
+    package_managers = {
+        'apt': 'debian-based',
+        'pacman': 'arch-based',
+        'dnf': 'fedora',
+        'zypper': 'opensuse',
+        'eopkg': 'solus',
+        'emerge': 'gentoo'
+    }
+    for pm in package_managers:
+        if shutil.which(pm):
+            logging.info(f"Detected package manager: {pm}")
+            return pm
+    logging.error("Unable to detect package manager. Unsupported distribution.")
+    return None
+
+def detect_pacman_db_warnings():
+    try:
+        process = subprocess.Popen(["pacman", "-Sy"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        logging.debug(f"pacman -Sy output: {stdout}")
+        logging.debug(f"pacman -Sy error: {stderr}")
+        if "database file for 'core' does not exist" in stderr or \
+           "database file for 'extra' does not exist" in stderr or \
+           "database file for 'multilib' does not exist" in stderr:
+            logging.warning("Detected missing database files.")
+            return True
+        return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error checking pacman database: {e}")
+        return False
+
+def run_pacman_sy():
+    try:
+        subprocess.check_call(["sudo", "pacman", "-Sy", "--noconfirm"])
+        logging.info("Executed `sudo pacman -Sy --noconfirm` successfully.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to execute `sudo pacman -Sy --noconfirm`. Error: {e}")
+        sys.exit(1)
+
+def ensure_arch_dependencies():
+    package_manager = detect_package_manager()
+    if package_manager != 'pacman':
+        logging.info("Skipping pacman-specific steps as the package manager is not pacman.")
+        return
+
+    if detect_pacman_db_warnings():
+        run_pacman_sy()
+
+    try:
+        subprocess.check_call(["pacman", "-Qi", "fakeroot"], stderr=subprocess.STDOUT, universal_newlines=True)
+        subprocess.check_call(["pacman", "-Qi", "base-devel"], stderr=subprocess.STDOUT, universal_newlines=True)
+        logging.info("fakeroot and base-devel are already installed.")
+    except subprocess.CalledProcessError:
+        logging.info("Installing fakeroot and base-devel...")
+        try:
+            run_pacman_sy()  # Ensure the database is updated before installing
+            subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "fakeroot", "base-devel"])
+            logging.info("fakeroot and base-devel installed successfully.")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to install fakeroot and base-devel. Error: {e}")
+            sys.exit(1)
+
+# Example usage:
+os_info = detect_os()
+logging.info(f"Detected OS: {os_info.get('PRETTY_NAME', 'Unknown')}")
+logging.info(f"OS ID: {os_info.get('ID', 'Unknown')}")
+logging.info(f"OS ID_LIKE: {os_info.get('ID_LIKE', 'Unknown')}")
+
+ensure_arch_dependencies()
+
+
+
+
+#------------------------------------Mini Code End-------------------------------------------
+
+
+    
+
+
+
+def get_distro():
+    try:
+        with open('/etc/os-release', 'r') as f:
+            lines = f.readlines()
+            distro_id = None
+            distro_like = None
+            for line in lines:
+                if line.startswith('ID='):
+                    distro_id = line.split('=')[1].strip().strip('"')
+                    logging.info(f"Detected ID in /etc/os-release: {distro_id}")
+                if line.startswith('ID_LIKE='):
+                    distro_like = line.split('=')[1].strip().strip('"')
+                    logging.info(f"Detected ID_LIKE in /etc/os-release: {distro_like}")
+            if distro_id == 'pop':
+                return 'ubuntu'
+            if distro_id:
+                return distro_id
+            if distro_like:
+                return distro_like
+        logging.error("Could not find ID or ID_LIKE in /etc/os-release.")
+    except Exception as e:
+        logging.error(f"Exception while reading /etc/os-release: {e}")
+    return detect_package_manager()
+
+def detect_display_server():
+    if 'WAYLAND_DISPLAY' in os.environ:
+        logging.info("Using Wayland display server.")
+        return 'wayland'
+    elif 'DISPLAY' in os.environ:
+        logging.info("Using Xorg display server.")
+        return 'xorg'
+    else:
+        logging.error("Unable to detect the display server.")
+        return 'unknown'
+
+def is_pacman_db_missing():
+    db_paths = [
+        "/var/lib/pacman/sync/core.db",
+        "/var/lib/pacman/sync/extra.db",
+        "/var/lib/pacman/sync/multilib.db"
+    ]
+
+
+
+import subprocess
+import logging
+import sys
+
+def handle_pacman_warnings(command):
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        output = result.stdout + result.stderr
+    except subprocess.CalledProcessError as e:
+        output = e.stdout + e.stderr
+
+    warnings = [
+        "warning: database file for 'core' does not exist",
+        "warning: database file for 'extra' does not exist",
+        "warning: database file for 'multilib' does not exist"
+    ]
+
+    if any(warning in output for warning in warnings):
+        logging.warning("Detected missing database files. Running database update.")
+        try:
+            subprocess.run(["sudo", "pacman", "-Sy", "--noconfirm"], check=True)
+            logging.info("Database update completed successfully.")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to update database: {e}")
+            return False
+    
+    return True
+
+
+
+import logging
+import subprocess
+import sys
+
+def run_pacman_sy():
+    try:
+        logging.info("Running `sudo pacman -Sy` to refresh package databases...")
+        subprocess.check_call(["sudo", "pacman", "-Sy"])
+        logging.info("Executed `sudo pacman -Sy` successfully.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to execute `sudo pacman -Sy`. Error: {e}")
+        sys.exit(1)
+
+def ensure_arch_dependencies():
+    try:
+        output = subprocess.check_output(["sudo", "pacman", "-S", "--noconfirm", "fakeroot", "base-devel"], stderr=subprocess.STDOUT).decode('utf-8')
+        if 'database file for' in output:
+            logging.info("Detected missing database file warnings. Running `sudo pacman -Sy`...")
+            run_pacman_sy()
+            output = subprocess.check_output(["sudo", "pacman", "-S", "--noconfirm", "fakeroot", "base-devel"], stderr=subprocess.STDOUT).decode('utf-8')
+            if 'database file for' in output:
+                logging.error("Failed to update package database. Please check your pacman configuration.")
+                sys.exit(1)
+        logging.info("fakeroot and base-devel are installed.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install fakeroot and base-devel. Error: {e}")
+        sys.exit(1)
+        return False
+
+
+
+def ensure_v4l_utils_installed_arch():
+    try:
+        output = subprocess.check_output(["sudo", "pacman", "-S", "--noconfirm", "v4l-utils"], stderr=subprocess.STDOUT).decode('utf-8')
+        if 'database file for' in output:
+            logging.info("Detected missing database file warnings. Running `sudo pacman -Sy`...")
+            run_pacman_sy()
+            subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "v4l-utils"])
+        logging.info("v4l-utils is installed.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install v4l-utils. Error: {e}")
+        if "database file for" in str(e.output):
+            logging.info("Detected database file issue. Running `sudo pacman -Sy` again...")
+            run_pacman_sy()
+            try:
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "v4l-utils"])
+            except subprocess.CalledProcessError as e2:
+                logging.error(f"Failed to install v4l-utils after running `sudo pacman -Sy`. Error: {e2}")
+                sys.exit(1)
+        else:
+            sys.exit(1)
+
+
+
+
+def install_yay():
+    try:
+        subprocess.check_call(["yay", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logging.info("yay is already installed.")
+    except FileNotFoundError:
+        logging.info("yay is not installed. Attempting to install it through pacman...")
+        try:
+            subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "yay"])
+            logging.info("yay has been successfully installed through pacman.")
+        except subprocess.CalledProcessError:
+            logging.info("Failed to install yay through pacman. Attempting to install it from AUR...")
+            try:
+                subprocess.check_call(["sudo", "pacman", "-S", "--needed", "--noconfirm", "base-devel"])
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    os.chdir(temp_dir)
+                    subprocess.check_call(["git", "clone", "https://aur.archlinux.org/yay.git"])
+                    os.chdir("yay")
+                    subprocess.check_call(["makepkg", "-si", "--noconfirm"])
+                logging.info("yay has been successfully installed from AUR.")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install yay. Error: {e}")
+                logging.error("Please install yay manually and run the script again.")
+                sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.info("An error occurred while checking yay version. Attempting to reinstall...")
+        try:
+            subprocess.check_call(["yay", "-S", "--noconfirm", "yay"])
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to reinstall yay. Error: {e}")
+            logging.error("Please install yay manually and run the script again.")
+            sys.exit(1)
+
+def install_psutil():
+    if not is_package_installed('python3-psutil'):
+        logging.info("psutil is not installed. Attempting to install it now...")
+        package_manager = detect_package_manager()
+        if package_manager == 'apt':
+            try:
+                subprocess.check_call(["sudo", "apt", "update"])
+                subprocess.check_call(["sudo", "apt", "install", "-y", "python3-psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with apt. Error: {e}")
+                sys.exit(1)
+        elif package_manager == 'pacman':
+            ensure_arch_dependencies()
+            try:
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "python-psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with pacman. Error: {e}")
+                sys.exit(1)
+        elif package_manager == 'dnf':
+            try:
+                subprocess.check_call(["sudo", "dnf", "install", "-y", "python3-psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with dnf. Error: {e}")
+                sys.exit(1)
+        elif package_manager == 'zypper':
+            try:
+                subprocess.check_call(["sudo", "zypper", "install", "-y", "python3-psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with zypper. Error: {e}")
+                sys.exit(1)
+        elif package_manager == 'eopkg':
+            try:
+                subprocess.check_call(["sudo", "eopkg", "install", "-y", "psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with eopkg. Error: {e}")
+                sys.exit(1)
+        elif package_manager == 'emerge':
+            try:
+                subprocess.check_call(["sudo", "emerge", "psutil"])
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil with emerge. Error: {e}")
+                sys.exit(1)
+        else:
+            logging.error(f"Unsupported distribution: {package_manager}")
+            sys.exit(1)
+        logging.info("psutil installation attempt completed.")
+    else:
+        logging.info("psutil is already installed.")
+
+def ensure_git_installed():
+    if not is_package_installed('git'):
+        logging.info("git is not installed. Attempting to install it now...")
+        try:
+            package_manager = detect_package_manager()
+            if package_manager == 'apt':
+                subprocess.check_call(["sudo", "apt", "install", "-y", "git"])
+            elif package_manager == 'pacman':
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "git"])
+            elif package_manager == 'dnf':
+                subprocess.check_call(["sudo", "dnf", "install", "-y", "git"])
+            elif package_manager == 'zypper':
+                subprocess.check_call(["sudo", "zypper", "install", "-y", "git"])
+            elif package_manager == 'eopkg':
+                subprocess.check_call(["sudo", "eopkg", "install", "-y", "git"])
+            elif package_manager == 'emerge':
+                subprocess.check_call(["sudo", "emerge", "git"])
+            logging.info("git installed successfully.")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to install git. Error: {e}")
+            sys.exit(1)
+    else:
+        logging.info("git is already installed.")
+
+alternative_names = {
+    'python3-gi': {
+        'apt': 'python3-gi',
+        'pacman': 'python-gobject',
+        'dnf': 'python3-gobject',
+        'zypper': 'python3-gobject',
+        'eopkg': 'python-gobject',
+        'emerge': 'dev-python/pygobject'
+    },
+    'python3-cairo': {
+        'apt': 'python3-cairo',
+        'pacman': 'python-cairo',
+        'dnf': 'python3-cairo',
+        'zypper': 'python3-cairo',
+        'eopkg': 'python-cairo',
+        'emerge': 'dev-python/pycairo'
+    },
+    'gstreamer1.0-plugins-base': {
+        'apt': 'gstreamer1.0-plugins-base',
+        'pacman': 'gst-plugins-base',
+        'dnf': 'gstreamer1.0-plugins-base',
+        'zypper': 'gstreamer-plugins-base',
+        'eopkg': 'gst-plugins-base',
+        'emerge': 'media-libs/gst-plugins-base'
+    },
+    'gstreamer1.0-plugins-good': {
+        'apt': 'gstreamer1.0-plugins-good',
+        'pacman': 'gst-plugins-good',
+        'dnf': 'gstreamer1.0-plugins-good',
+        'zypper': 'gstreamer-plugins-good',
+        'eopkg': 'gst-plugins-good',
+        'emerge': 'media-plugins/gst-plugins-good'
+    },
+    'gstreamer1.0-plugins-bad': {
+        'apt': 'gstreamer1.0-plugins-bad',
+        'pacman': 'gst-plugins-bad',
+        'dnf': 'gstreamer1.0-plugins-bad-free',
+        'zypper': 'gstreamer-plugins-bad',
+        'eopkg': 'gst-plugins-bad',
+        'emerge': 'media-plugins/gst-plugins-bad'
+    },
+    'libappindicator3-dev': {
+        'apt': 'libappindicator3-dev',
+        'pacman': 'libappindicator-gtk3',
+        'dnf': 'libappindicator-gtk3-devel',
+        'zypper': 'libappindicator3-devel',
+        'eopkg': 'libappindicator-devel',
+        'emerge': 'dev-libs/libappindicator'
+    },
+    'gir1.2-appindicator3-0.1': {
+        'apt': 'gir1.2-appindicator3-0.1',
+        'pacman': 'libappindicator-gtk3',
+        'dnf': 'libappindicator-gtk3',
+        'zypper': 'libappindicator3',
+        'eopkg': 'libappindicator',
+        'emerge': 'dev-libs/libappindicator'
+    },
+    'libx264-dev': {
+        'apt': 'libx264-dev',
+        'pacman': 'x264',
+        'dnf': 'x264-devel',
+        'zypper': 'libx264-devel',
+        'eopkg': 'libx264-devel',
+        'emerge': 'media-libs/x264'
+    },
+    'libx265-dev': {
+        'apt': 'libx265-dev',
+        'pacman': 'x265',
+        'dnf': 'x265-devel',
+        'zypper': 'libx265-devel',
+        'eopkg': 'libx265-devel',
+        'emerge': 'media-libs/x265'
+    },
+    'x11-xserver-utils': {
+        'apt': 'x11-xserver-utils',
+        'pacman': 'xorg-xrandr',
+        'dnf': 'xorg-x11-utils',
+        'zypper': 'xorg-x11-utils',
+        'eopkg': 'xorg-server-utils',
+        'emerge': 'x11-apps/xrandr'
+    },
+    'psutil': {
+        'apt': 'python3-psutil',
+        'pacman': 'python-psutil',
+        'dnf': 'python3-psutil',
+        'zypper': 'python3-psutil',
+        'eopkg': 'psutil',
+        'emerge': 'dev-python/psutil'
+    }
+}
+
+def is_package_installed(package_name):
+    package_manager = detect_package_manager()
+    logging.info(f"Checking if {package_name} is installed using {package_manager}")
+
+    if package_manager == 'apt':
+        try:
+            result = subprocess.run(["dpkg-query", "-W", "-f=${Status}", package_name], 
+                                    capture_output=True, text=True, check=True)
+            if "install ok installed" in result.stdout:
+                logging.info(f"Package {package_name} is installed")
+                return True
+        except subprocess.CalledProcessError:
+            return False
+    elif package_manager == 'pacman':
+        try:
+            result = subprocess.run(["pacman", "-Q", package_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if result.returncode == 0:
+                logging.info(f"Package {package_name} is installed")
+                return True
+        except subprocess.CalledProcessError:
+            return False
+    elif package_manager == 'dnf':
+        try:
+            subprocess.run(["rpm", "-q", package_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logging.info(f"Package {package_name} is installed")
+            return True
+        except subprocess.CalledProcessError:
+            return False
+    elif package_manager == 'zypper':
+        try:
+            result = subprocess.run(["zypper", "se", "-i", package_name], 
+                                    capture_output=True, text=True, check=True)
+            if "i+ | " + package_name in result.stdout:
+                logging.info(f"Package {package_name} is installed (zypper)")
+                return True
+        except subprocess.CalledProcessError:
+            return False
+    elif package_manager == 'eopkg':
+        try:
+            subprocess.run(["eopkg", "list-installed", package_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logging.info(f"Package {package_name} is installed")
+            return True
+        except subprocess.CalledProcessError:
+            return False
+    elif package_manager == 'emerge':
+        try:
+            subprocess.run(["qlist", "-I", package_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logging.info(f"Package {package_name} is installed")
+            return True
+        except subprocess.CalledProcessError:
+            return False
+    else:
+        logging.error(f"Unsupported package manager: {package_manager}")
+        return False
+
+def install_package(package_name):
+    if is_package_installed(package_name):
+        logging.info(f"{package_name} is already installed.")
+        return True
+
+    logging.info(f"Attempting to install {package_name}...")
+    package_manager = detect_package_manager()
+
+    try:
+        if package_manager == 'apt':
+            subprocess.run(["sudo", "apt-get", "update"], check=True)
+            subprocess.run(["sudo", "apt-get", "install", "-y", package_name], check=True)
+        elif package_manager == 'pacman':
+            subprocess.run(["sudo", "pacman", "-S", "--noconfirm", package_name], check=True)
+        elif package_manager == 'dnf':
+            subprocess.run(["sudo", "dnf", "install", "-y", package_name], check=True)
+        elif package_manager == 'zypper':
+            subprocess.run(["sudo", "zypper", "install", "-y", package_name], check=True)
+        elif package_manager == 'eopkg':
+            subprocess.run(["sudo", "eopkg", "install", "-y", package_name], check=True)
+        elif package_manager == 'emerge':
+            subprocess.run(["sudo", "emerge", package_name], check=True)
+        else:
+            logging.error(f"Unsupported package manager: {package_manager}")
+            return False
+
+        if is_package_installed(package_name):
+            logging.info(f"{package_name} installed successfully.")
+            return True
+        else:
+            logging.error(f"Installation of {package_name} failed verification.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install {package_name}. Command '{e.cmd}' returned non-zero exit status {e.returncode}.")
+        if e.output:
+            logging.error(f"Command output: {e.output}")
+        return False
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while installing {package_name}: {str(e)}")
+        return False
+
+def install_package_if_needed(package_name):
+    if not is_package_installed(package_name):
+        logging.info(f"{package_name} needs to be installed.")
+        if install_package(package_name):
+            logging.info(f"{package_name} was successfully installed.")
+        else:
+            logging.error(f"Failed to install {package_name}.")
+    else:
+        logging.info(f"{package_name} is already installed. Skipping installation.")
+
+# Specific handling for psutil on Arch Linux
+def install_psutil():
+    package_name = "python-psutil" if detect_package_manager() == 'pacman' else "python3-psutil"
+    install_package_if_needed(package_name)
+
+# Use this function instead of install_psutil()
+install_psutil()
+
+def ensure_v4l_utils_installed():
+    if not is_package_installed('v4l-utils'):
+        logging.info("v4l-utils is not installed. Attempting to install...")
+        if install_package('v4l-utils'):
+            logging.info("v4l-utils installed successfully.")
+        else:
+            logging.warning("Failed to install v4l-utils. Some camera functionality may not work.")
+    else:
+        logging.info("v4l-utils is already available in PATH.")
+
+ensure_v4l_utils_installed()
+
+def add_packman_repository():
+    try:
+        if distro == 'opensuse-tumbleweed':
+            subprocess.check_call(["sudo", "zypper", "ar", "-cfp", "90", "http://packman.inode.at/suse/openSUSE_Tumbleweed/", "packman"])
+        elif distro == 'opensuse-leap':
+            subprocess.check_call(["sudo", "zypper", "ar", "-cfp", "90", "http://packman.inode.at/suse/openSUSE_Leap_15.5/", "packman"])
+        subprocess.check_call(["sudo", "zypper", "refresh"])
+        logging.info("Packman repository added and refreshed.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to add Packman repository. Error: {e}")
+        sys.exit(1)
+
+def check_build_tools():
+    package_manager = detect_package_manager()
+    if package_manager == 'apt':
+        try:
+            subprocess.check_call(["dpkg", "-s", "build-essential"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logging.info("build-essential is already installed.")
+        except subprocess.CalledProcessError:
+            logging.info("build-essential is not installed. Attempting to install...")
+            if not install_package("build-essential"):
+                logging.error("Failed to install build-essential. Please install it manually.")
+                return False
+    elif package_manager in ['pacman', 'dnf', 'zypper', 'eopkg', 'emerge']:
+        tools = ['gcc', 'make']
+    else:
+        logging.error(f"Unsupported package manager: {package_manager}")
+        logging.error("Please ensure you have gcc and make installed manually.")
+        return False
+    
+    if package_manager in ['pacman', 'dnf', 'zypper', 'eopkg', 'emerge']:
+        missing_tools = []
+        for tool in tools:
+            try:
+                subprocess.check_call(["which", tool], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError:
+                missing_tools.append(tool)
+        
+        if missing_tools:
+            logging.info(f"Missing build tools: {', '.join(missing_tools)}")
+            logging.info("Attempting to install missing build tools...")
+            for tool in missing_tools:
+                if not install_package(tool):
+                    logging.error(f"Failed to install {tool}. Please install it manually.")
+                    return False
+    
+    return True
+
+def install_xrectsel():
+    logging.info("Attempting to install xrectsel...")
+    package_manager = detect_package_manager()
+    try:
+        if package_manager == 'pacman':
+            ensure_arch_dependencies()
+            logging.info("Installing xrectsel using yay...")
+            install_yay()
+            subprocess.check_call(["yay", "-S", "--noconfirm", "xrectsel"])
+        elif package_manager == 'dnf':
+            logging.info("Installing build dependencies...")
+            subprocess.check_call(["sudo", "dnf", "install", "-y", "gcc", "gcc-c++", "make", "libX11-devel", "wget", "tar", "pkgconfig"])
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.chdir(temp_dir)
+                logging.info(f"Working in temporary directory: {temp_dir}")
+
+                logging.info("Downloading xrectsel source code from ropery's GitHub repository...")
+                subprocess.check_call(["wget", "https://github.com/ropery/xrectsel/archive/0.3.2.tar.gz", "-O", "xrectsel.tar.gz"])
+
+                logging.info("Extracting source code...")
+                subprocess.check_call(["tar", "-xzf", "xrectsel.tar.gz"])
+
+                logging.info("Changing to xrectsel directory...")
+                os.chdir("xrectsel-0.3.2")
+
+                logging.info("Creating a minimal config.h file...")
+                with open("config.h", "w") as config_file:
+                    config_file.write('#define PACKAGE_NAME "xrectsel"\n#define PACKAGE_VERSION "0.3.2"\n')
+
+                logging.info("Compiling xrectsel...")
+                pkg_config_output = subprocess.check_output(["pkg-config", "--cflags", "--libs", "x11", "xrandr"], universal_newlines=True).strip()
+                gcc_command = ["gcc", "-o", "xrectsel", "xrectsel.c", "-I."] + pkg_config_output.split()
+                make_process = subprocess.Popen(gcc_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                stdout, stderr = make_process.communicate()
+
+                logging.info("GCC stdout:")
+                logging.info(stdout)
+                logging.info("GCC stderr:")
+                logging.info(stderr)
+
+                if make_process.returncode != 0:
+                    logging.error(f"GCC command failed with return code {make_process.returncode}")
+                    raise subprocess.CalledProcessError(make_process.returncode, "gcc")
+
+                logging.info("Installing xrectsel...")
+                subprocess.check_call(["sudo", "install", "-v", "xrectsel", "/usr/local/bin/"])
+
+            logging.info("xrectsel has been successfully installed to /usr/local/bin/xrectsel.")
+            return True
+        elif package_manager == 'apt':
+            return install_xrectsel_apt()
+        elif package_manager in ['zypper', 'eopkg', 'emerge']:
+            logging.info("Installing build dependencies...")
+            if package_manager == 'zypper':
+                subprocess.check_call(["sudo", "zypper", "install", "-y", "gcc", "gcc-c++", "make", "libX11-devel", "wget", "tar"])
+            elif package_manager == 'eopkg':
+                subprocess.check_call(["sudo", "eopkg", "install", "-y", "gcc", "make", "libx11-devel", "wget", "tar"])
+            elif package_manager == 'emerge':
+                subprocess.check_call(["sudo", "emerge", "gcc", "make", "libX11", "wget", "tar"])
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.chdir(temp_dir)
+                logging.info(f"Working in temporary directory: {temp_dir}")
+
+                logging.info("Downloading xrectsel source code from ropery's GitHub repository...")
+                subprocess.check_call(["wget", "https://github.com/ropery/xrectsel/archive/0.3.2.tar.gz", "-O", "xrectsel.tar.gz"])
+
+                logging.info("Extracting source code...")
+                subprocess.check_call(["tar", "-xzf", "xrectsel.tar.gz"])
+
+                logging.info("Changing to xrectsel directory...")
+                extracted_dir = next(name for name in os.listdir() if os.path.isdir(name))
+                os.chdir(extracted_dir)
+
+                logging.info("Creating a minimal config.h file...")
+                with open("config.h", "w") as config_file:
+                    config_file.write('#define PACKAGE_NAME "xrectsel"\n#define PACKAGE_VERSION "0.3.2"\n')
+
+                logging.info("Compiling xrectsel...")
+                pkg_config_output = subprocess.check_output(["pkg-config", "--cflags", "--libs", "x11", "xrandr"], universal_newlines=True).strip()
+                gcc_command = ["gcc", "-o", "xrectsel", "xrectsel.c", "-I."] + pkg_config_output.split()
+                make_process = subprocess.Popen(gcc_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                stdout, stderr = make_process.communicate()
+
+                logging.info("GCC stdout:")
+                logging.info(stdout)
+                logging.info("GCC stderr:")
+                logging.info(stderr)
+
+                if make_process.returncode != 0:
+                    logging.error(f"GCC command failed with return code {make_process.returncode}")
+                    raise subprocess.CalledProcessError(make_process.returncode, "gcc")
+
+                logging.info("Installing xrectsel...")
+                subprocess.check_call(["sudo", "install", "-v", "xrectsel", "/usr/local/bin/"])
+
+            logging.info("xrectsel has been successfully installed to /usr/local/bin/xrectsel.")
+            return True
+        else:
+            logging.error(f"Unsupported package manager: {package_manager}")
+            logging.error("Please install xrectsel manually.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install xrectsel. Error: {e}")
+        logging.error(f"Command '{e.cmd}' returned non-zero exit status {e.returncode}.")
+        if hasattr(e, 'output') and e.output:
+            logging.error(f"Output: {e.output}")
+        return False
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while installing xrectsel: {str(e)}")
+        return False
+
+def install_xrectsel_apt():
+    logging.info("Installing build dependencies...")
+    subprocess.check_call(["sudo", "apt", "update"])
+    subprocess.check_call(["sudo", "apt", "install", "-y", "build-essential", "libx11-dev", "libxrandr-dev", "pkg-config", "wget", "tar"])
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        os.chdir(temp_dir)
+        logging.info(f"Working in temporary directory: {temp_dir}")
+
+        logging.info("Downloading xrectsel source code from ropery's GitHub repository...")
+        subprocess.check_call(["wget", "https://github.com/ropery/xrectsel/archive/0.3.2.tar.gz", "-O", "xrectsel.tar.gz"])
+
+        logging.info("Extracting source code...")
+        subprocess.check_call(["tar", "-xzf", "xrectsel.tar.gz"])
+
+        logging.info("Changing to xrectsel directory...")
+        os.chdir("xrectsel-0.3.2")
+
+        logging.info("Creating a minimal config.h file...")
+        with open("config.h", "w") as config_file:
+            config_file.write('#define PACKAGE_NAME "xrectsel"\n#define PACKAGE_VERSION "0.3.2"\n')
+
+        logging.info("Compiling xrectsel...")
+        pkg_config_output = subprocess.check_output(["pkg-config", "--cflags", "--libs", "x11", "xrandr"], universal_newlines=True).strip()
+        gcc_command = ["gcc", "-o", "xrectsel", "xrectsel.c", "-I."] + pkg_config_output.split()
+        make_process = subprocess.Popen(gcc_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = make_process.communicate()
+
+        logging.info("GCC stdout:")
+        logging.info(stdout)
+        logging.info("GCC stderr:")
+        logging.info(stderr)
+
+        if make_process.returncode != 0:
+            logging.error(f"GCC command failed with return code {make_process.returncode}")
+            raise subprocess.CalledProcessError(make_process.returncode, "gcc")
+
+        logging.info("Installing xrectsel...")
+        subprocess.check_call(["sudo", "install", "-v", "xrectsel", "/usr/local/bin/"])
+
+    logging.info("xrectsel has been successfully installed to /usr/local/bin/xrectsel.")
+    return True
+
+def setup_ffmpeg_opensuse():
+    try:
+        logging.info("Setting up FFmpeg with codec support on openSUSE...")
+        
+        if not check_repositories():
+            logging.error("Failed to check repositories. Continuing with setup...")
+        
+        add_packman_repository()
+        subprocess.check_call(["sudo", "zypper", "refresh"])
+        logging.info("Installing FFmpeg from Packman repository...")
+        ffmpeg_packages = ["ffmpeg", "libavcodec-full", "libavdevice-full", "libavfilter-full", "libavformat-full", "libavutil-full", "libswresample-full", "libswscale-full"]
+        for package in ffmpeg_packages:
+            result = subprocess.run(["sudo", "zypper", "install", "--from", "packman", "-y", package], 
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            if result.returncode != 0:
+                logging.error(f"Error installing {package}. Return code: {result.returncode}")
+                logging.error(f"Command output:\n{result.stdout}\n{result.stderr}")
+            else:
+                logging.info(f"Successfully installed {package}")
+        
+        logging.info("Installing additional codecs...")
+        codec_packages = ["libx264-155", "libx265-199"]
+        for package in codec_packages:
+            codec_result = subprocess.run(["sudo", "zypper", "install", "--from", "packman", "-y", package], 
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            if codec_result.returncode != 0:
+                logging.error(f"Error installing {package}. Return code: {codec_result.returncode}")
+                logging.error(f"Command output:\n{codec_result.stdout}\n{codec_result.stderr}")
+            else:
+                logging.info(f"Successfully installed {package}")
+        
+        logging.info("Verifying FFmpeg installation...")
+        verify_result = subprocess.run(["ffmpeg", "-encoders"], 
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if "libx264" in verify_result.stdout:
+            logging.info("FFmpeg with libx264 support has been successfully installed.")
+        else:
+            logging.error("libx264 support not found in FFmpeg. Installation might have failed.")
+            logging.info("FFmpeg encoders output:")
+            logging.info(verify_result.stdout)
+        
+        logging.info("Checking FFmpeg version and configuration...")
+        version_result = subprocess.run(["ffmpeg", "-version"], 
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logging.info(version_result.stdout)
+        
+    except subprocess.CalledProcessError as e:
+        logging.error(f"An error occurred while setting up FFmpeg: {e}")
+        logging.error(f"Command that failed: {e.cmd}")
+        logging.error(f"Return code: {e.returncode}")
+        logging.error(f"Output: {e.output}")
+        logging.error(f"Stderr: {e.stderr}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+    
+    logging.info("FFmpeg setup process completed.")
+
+def check_ffmpeg_installation():
+    try:
+        # First, check if ffmpeg is in the PATH
+        if shutil.which('ffmpeg') is None:
+            logging.error("FFmpeg is not found in the system PATH.")
+            return False
+
+        # Now, try to run ffmpeg
+        result = subprocess.run(["ffmpeg", "-version"], 
+                                stdout=subprocess.PIPE, 
+                                stderr=subprocess.PIPE, 
+                                universal_newlines=True)
+        
+        if result.returncode != 0:
+            logging.error(f"Error running FFmpeg: {result.stderr}")
+            return False
+
+        logging.info("FFmpeg is installed and working.")
+        
+        # Check for required codecs
+        encoders_result = subprocess.run(["ffmpeg", "-encoders"], 
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        
+        if "libx264" not in encoders_result.stdout or "libx265" not in encoders_result.stdout:
+            logging.warning("FFmpeg is installed but missing required codecs (libx264 or libx265).")
+            return False
+
+        logging.info("FFmpeg is installed with required codecs.")
+        return True
+    except Exception as e:
+        logging.error(f"An error occurred while checking FFmpeg installation: {e}")
+        return False
+
+def check_ffmpeg_config():
+    try:
+        version_result = subprocess.run(["ffmpeg", "-version"], 
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logging.info("FFmpeg version:")
+        logging.info(version_result.stdout)
+
+        encoders_result = subprocess.run(["ffmpeg", "-encoders"], 
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logging.info("Available encoders:")
+        logging.info(encoders_result.stdout)
+
+        config_result = subprocess.run(["ffmpeg", "-formats"], 
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logging.info("FFmpeg configuration:")
+        logging.info(config_result.stdout)
+
+        if "libx264" in encoders_result.stdout:
+            logging.info("libx264 encoder is available.")
+        else:
+            logging.warning("libx264 encoder is not available. You may need to install additional packages.")
+
+    except FileNotFoundError:
+        logging.error("FFmpeg is not installed or not in the system PATH.")
+    except Exception as e:
+        logging.error(f"An error occurred while checking FFmpeg configuration: {e}")
+
+def check_repositories():
+    try:
+        result = subprocess.run(['zypper', 'repos'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logging.info("Defined repositories:")
+        logging.info(result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error checking repositories: {e}")
+        logging.error(f"Command output: {e.output}")
+        return False
+
+def check_and_install_codecs():
+    codecs = ['libx264', 'libx265']
+    package_manager = detect_package_manager()
+    
+    def is_ffmpeg_installed():
+        return shutil.which('ffmpeg') is not None
+
+    try:
+        # First, ensure FFmpeg is installed
+        if not is_ffmpeg_installed():
+            logging.info("FFmpeg is not installed. Attempting to install...")
+            if not install_package('ffmpeg'):
+                logging.error("Failed to install FFmpeg. This is a critical error.")
+                return False
+        
+        # Verify FFmpeg installation
+        if not is_ffmpeg_installed():
+            logging.error("FFmpeg installation failed. This is a critical error.")
+            return False
+
+        # Now check for codecs
+        try:
+            installed_codecs = subprocess.check_output(['ffmpeg', '-codecs'], stderr=subprocess.STDOUT).decode('utf-8')
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Error checking FFmpeg codecs: {e}")
+            logging.error(f"FFmpeg output: {e.output.decode('utf-8')}")
+            return False
+
+        for codec in codecs:
+            if codec not in installed_codecs:
+                logging.info(f"{codec} is not installed. Attempting to install...")
+                if package_manager == 'apt':
+                    if codec == 'libx264':
+                        install_package('libx264-dev')
+                    elif codec == 'libx265':
+                        install_package('libx265-dev')
+                elif package_manager == 'pacman':
+                    install_package('ffmpeg')
+                elif package_manager == 'dnf':
+                    install_package('ffmpeg-free.x86_64')
+                    install_package(codec)
+                elif package_manager == 'zypper':
+                    setup_ffmpeg_opensuse()
+                elif package_manager in ['eopkg', 'emerge']:
+                    install_package('ffmpeg')
+        
+        # Verify installation
+        if not check_ffmpeg_installation():
+            logging.error("FFmpeg installation verification failed. This is a critical error.")
+            return False
+        
+        return True
+    except Exception as e:
+        logging.error(f"An error occurred while checking or installing codecs: {e}")
+        return False
+
+def check_install_python_gobject():
+    logging.info("Checking for python-gobject package...")
+    package_manager = detect_package_manager()
+    
+    if is_package_installed('python-gobject'):
+        logging.info("python-gobject is already installed.")
+        return True
+
+    if package_manager != 'apt':
+        logging.info(f"Not using APT package manager. Attempting to install python-gobject using {package_manager}...")
+        if install_package('python-gobject'):
+            logging.info("python-gobject installed successfully.")
+            return True
+        else:
+            logging.error("Failed to install python-gobject.")
+            return False
+    
+    try:
+        subprocess.check_call(["dpkg", "-s", "python3-gi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logging.info("python-gobject (python3-gi) is already installed.")
+        return True
+    except subprocess.CalledProcessError:
+        logging.info("python-gobject (python3-gi) is not installed. Attempting to install...")
+        try:
+            subprocess.check_call(["sudo", "apt", "update"])
+            subprocess.check_call(["sudo", "apt", "install", "-y", "python3-gi"])
+            logging.info("python-gobject (python3-gi) installed successfully.")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to install python-gobject (python3-gi). Error: {e}")
+            return False
+
+def install_handbrake_cli():
+    distro = get_distro()
+    if distro not in ['ubuntu', 'debian']:
+        logging.error(f"This function is specific to Ubuntu and Debian. Detected distro: {distro}")
+        return False
+
+    if verify_handbrake_cli_installation():
+        logging.info("HandBrakeCLI is already installed.")
+        return True
+
+    logging.info(f"HandBrakeCLI not found. Installing on {distro.capitalize()}...")
+    try:
+        # Update package list
+        subprocess.check_call(["sudo", "apt", "update"])
+        
+        # Install handbrake-cli
+        subprocess.check_call(["sudo", "apt", "install", "-y", "handbrake-cli"])
+        
+        if verify_handbrake_cli_installation():
+            logging.info("HandBrakeCLI installed successfully.")
+            return True
+        else:
+            logging.error("HandBrakeCLI installation failed verification.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install HandBrakeCLI. Error: {e}")
+        return False
+
+def add_handbrake_ppa():
+    try:
+        # First, install software-properties-common if it's not already installed
+        subprocess.check_call(["sudo", "apt-get", "install", "-y", "software-properties-common"])
+        
+        # Add the HandBrake PPA
+        subprocess.check_call(["sudo", "add-apt-repository", "-y", "ppa:stebbins/handbrake-releases"])
+        
+        # Update package list
+        subprocess.check_call(["sudo", "apt-get", "update"])
+        
+        logging.info("Successfully added HandBrake PPA.")
+        return True
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to add HandBrake PPA. Error: {e}")
+        return False
+
+def install_handbrake_cli_from_source():
+    logging.info("Attempting to install HandBrakeCLI from source...")
+    try:
+        # Install build dependencies
+        subprocess.check_call(["sudo", "apt-get", "install", "-y", "autoconf", "automake", "build-essential", "cmake", "git", "libass-dev", "libbz2-dev", "libfontconfig1-dev", "libfreetype6-dev", "libfribidi-dev", "libharfbuzz-dev", "libjansson-dev", "liblzma-dev", "libmp3lame-dev", "libnuma-dev", "libogg-dev", "libopus-dev", "libsamplerate-dev", "libspeex-dev", "libtheora-dev", "libtool", "libtool-bin", "libvorbis-dev", "libx264-dev", "libxml2-dev", "libvpx-dev", "m4", "make", "nasm", "ninja-build", "patch", "pkg-config", "python", "tar", "zlib1g-dev"])
+        
+        # Clone HandBrake repository
+        subprocess.check_call(["git", "clone", "https://github.com/HandBrake/HandBrake.git"])
+        os.chdir("HandBrake")
+        
+        # Configure and build
+        subprocess.check_call(["./configure", "--launch-jobs=$(nproc)", "--launch"])
+        
+        # Install
+        subprocess.check_call(["sudo", "make", "--directory=build", "install"])
+        
+        os.chdir("..")
+        shutil.rmtree("HandBrake")
+        
+        if verify_handbrake_cli_installation():
+            logging.info("Successfully installed HandBrakeCLI from source.")
+            return True
+        else:
+            logging.error("Failed to install HandBrakeCLI from source.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error during HandBrakeCLI source installation: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Unexpected error during HandBrakeCLI source installation: {e}")
+        return False
+
+def verify_handbrake_cli_installation():
+    if shutil.which('HandBrakeCLI'):
+        logging.info("HandBrakeCLI is installed and in the system PATH.")
+        return True
+    else:
+        logging.info("HandBrakeCLI is not found in the system PATH.")
+        return False
+
+def ensure_handbrake_cli_installed():
+    try:
+        # Check if HandBrakeCLI is already installed
+        subprocess.run(["HandBrakeCLI", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("HandBrakeCLI is already installed.")
+    except FileNotFoundError:
+        print("HandBrakeCLI not found. Installing now...")
+        try:
+            # Update package list and install HandBrakeCLI
+            subprocess.run(["sudo", "apt", "update"], check=True)
+            subprocess.run(["sudo", "apt", "install", "-y", "handbrake-cli"], check=True)
+            print("HandBrakeCLI has been successfully installed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error installing HandBrakeCLI: {e}")
+            print("Please make sure you have sudo privileges and try again.")
+
+# Call this function at the start of your program
+ensure_handbrake_cli_installed()
+
+def verify_wmctrl_installation():
+    if shutil.which('wmctrl'):
+        logging.info("wmctrl is installed and in the system PATH.")
+        return True
+    else:
+        logging.error("wmctrl is not found in the system PATH after installation attempt.")
+        return False
+
+def install_wmctrl():
+    if install_package('wmctrl'):
+        if verify_wmctrl_installation():
+            return True
+    
+    logging.warning("Standard installation of wmctrl failed. Attempting alternative methods...")
+    
+    # Try installing x11-utils which includes wmctrl on some systems
+    if install_package('x11-utils'):
+        if verify_wmctrl_installation():
+            return True
+    
+    # If all else fails, try to install from source
+    return install_wmctrl_from_source()
+
+def install_wmctrl_from_source():
+    logging.info("Attempting to install wmctrl from source...")
+    try:
+        # Install build dependencies
+        install_package('build-essential')
+        install_package('libx11-dev')
+        install_package('libglib2.0-dev')
+        install_package('libxmu-dev')
+        
+        # Clone wmctrl repository
+        subprocess.check_call(["git", "clone", "https://github.com/geekless/wmctrl.git"])
+        os.chdir("wmctrl")
+        
+        # Build and install
+        subprocess.check_call(["./configure"])
+        subprocess.check_call(["make"])
+        subprocess.check_call(["sudo", "make", "install"])
+        
+        os.chdir("..")
+        shutil.rmtree("wmctrl")
+        
+        if verify_wmctrl_installation():
+            logging.info("Successfully installed wmctrl from source.")
+            return True
+        else:
+            logging.error("Failed to install wmctrl from source.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error during wmctrl source installation: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Unexpected error during wmctrl source installation: {e}")
+        return False
+
+# In your main script or where you check for dependencies
+if not verify_wmctrl_installation():
+    if not install_wmctrl():
+        logging.error("Failed to install wmctrl. Some features may not work correctly.")
+    else:
+        logging.info("wmctrl has been successfully installed.")
+
+def check_and_install_dependencies():
+    package_manager = detect_package_manager()
+    distro = get_distro()
+    
+    logging.info(f"Detected package manager: {package_manager}")
+    logging.info(f"Detected distribution: {distro}")
+
+    if not install_psutil():
+        logging.error("Failed to install psutil. This may affect some functionality.")
+    ensure_git_installed()
+    
+    if not check_build_tools():
+        return False
+    
+    if not check_install_python_gobject():
+        logging.error("Failed to install python-gobject. This is a critical dependency.")
+        return False
+    
+    missing_packages = []
+    installed_packages = []
+    failed_packages = []
+    
+    for package in alternative_names:
+        installed = False
+        if package in alternative_names:
+            logging.info(f"Checking alternatives for {package}...")
+            for alt_name in alternative_names[package]:
+                if is_package_installed(alt_name):
+                    logging.info(f"Alternative {alt_name} for {package} is installed.")
+                    installed_packages.append(alt_name)
+                    installed = True
+                    break
+            if not installed:
+                package_to_install = alternative_names[package].get(distro, package)
+        
+        if not installed:
+            if is_package_installed(package_to_install):
+                logging.info(f"{package_to_install} is already installed.")
+                installed_packages.append(package_to_install)
+            else:
+                logging.info(f"{package_to_install} needs to be installed.")
+                missing_packages.append(package_to_install)
+    
+    logging.info("\nInstalled packages:")
+    logging.info(installed_packages)
+    logging.info("Packages to be installed:")
+    logging.info(missing_packages)
+    
+    for package in missing_packages:
+        if not install_package(package):
+            logging.error(f"Failed to install {package}. Continuing without it.")
+            failed_packages.append(package)
+    
+    # Specific check for handbrake-cli
+    if not is_package_installed('handbrake-cli') and not is_package_installed('handbrake'):
+        logging.info("handbrake-cli is not installed. Attempting to install...")
+        if not install_package('handbrake-cli') and not install_package('handbrake'):
+            logging.error("Failed to install handbrake-cli or handbrake. Continuing without it.")
+            failed_packages.append('handbrake-cli')
+    
+    if shutil.which('xrectsel') is None:
+        logging.info("xrectsel is not installed. Attempting to install...")
+        if not install_xrectsel():
+            logging.error("Failed to install xrectsel. Continuing without it.")
+            failed_packages.append('xrectsel')
+    
+    for package in missing_packages:
+        if package == 'wmctrl':
+            if not install_wmctrl():
+                logging.error("Failed to install wmctrl. Continuing without it.")
+                failed_packages.append('wmctrl')
+        elif not install_package(package):
+            logging.error(f"Failed to install {package}. Continuing without it.")
+            failed_packages.append(package)
+
+    if package_manager == 'zypper':
+        setup_ffmpeg_opensuse()
+    else:
+        check_and_install_codecs()
+    
+    if not check_ffmpeg_installation():
+        logging.error("FFmpeg installation or codec verification failed. Some features may not work correctly.")
+    else:
+        logging.info("FFmpeg installation and codec verification successful.")
+    
+    # Check and install xclip
+    if not ensure_xclip_installed():
+        logging.warning("Failed to install xclip. Some clipboard functionality may not work.")
+        failed_packages.append('xclip')
+    
+    if failed_packages:
+        logging.warning(f"The following packages could not be installed: {', '.join(failed_packages)}")
+        logging.warning("Some features may not work correctly. Please install these packages manually if needed.")
+    else:
+        logging.info("All required packages were successfully installed.")
+    
+    return len(failed_packages) == 0
+
+def ensure_xclip_installed():
+    logging.info("Checking xclip installation...")
+    
+    # Check if xclip is installed
+    if shutil.which('xclip') is not None:
+        logging.info("xclip is already installed.")
+        return True
+    
+    logging.warning("xclip is not installed. Attempting to install...")
+    
+    package_manager = detect_package_manager()
+    
+    if package_manager == 'apt':
+        install_command = ['sudo', 'apt-get', 'install', '-y', 'xclip']
+    elif package_manager == 'pacman':
+        install_command = ['sudo', 'pacman', '-S', '--noconfirm', 'xclip']
+    elif package_manager == 'dnf':
+        install_command = ['sudo', 'dnf', 'install', '-y', 'xclip']
+    elif package_manager == 'zypper':
+        install_command = ['sudo', 'zypper', 'install', '-y', 'xclip']
+    elif package_manager == 'eopkg':
+        install_command = ['sudo', 'eopkg', 'install', '-y', 'xclip']
+    elif package_manager == 'emerge':
+        install_command = ['sudo', 'emerge', 'x11-misc/xclip']
+    else:
+        logging.error(f"Unsupported package manager: {package_manager}")
+        return False
+
+    try:
+        subprocess.run(install_command, check=True)
+        logging.info("xclip installed successfully.")
+        return True
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install xclip. Error: {e}")
+        return False
+
+
+def install_psutil():
+    logging.info("Checking psutil installation...")
+    
+    try:
+        import psutil
+        logging.info("psutil is already installed.")
+        return True
+    except ImportError:
+        logging.info("psutil is not installed. Attempting to install...")
+    
+    package_manager = detect_package_manager()
+    
+    if package_manager == 'apt':
+        try:
+            # First, update the package list
+            subprocess.run(['sudo', 'apt-get', 'update'], check=True)
+            # Then try to install python3-psutil
+            subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3-psutil'], check=True)
+        except subprocess.CalledProcessError:
+            logging.error("Failed to install python3-psutil. Attempting to install via pip...")
+            try:
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3-pip'], check=True)
+                subprocess.run(['pip3', 'install', 'psutil'], check=True)
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install psutil via pip. Error: {e}")
+                return False
+    elif package_manager == 'pacman':
+        subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'python-psutil'], check=True)
+    elif package_manager == 'dnf':
+        subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3-psutil'], check=True)
+    elif package_manager == 'zypper':
+        subprocess.run(['sudo', 'zypper', 'install', '-y', 'python3-psutil'], check=True)
+    elif package_manager == 'eopkg':
+        subprocess.run(['sudo', 'eopkg', 'install', '-y', 'python3-psutil'], check=True)
+    elif package_manager == 'emerge':
+        subprocess.run(['sudo', 'emerge', 'dev-python/psutil'], check=True)
+    else:
+        logging.error(f"Unsupported package manager: {package_manager}")
+        return False
+
+    logging.info("psutil installation completed. Verifying...")
+    try:
+        import psutil
+        logging.info("psutil was successfully installed and imported.")
+        return True
+    except ImportError:
+        logging.error("Failed to import psutil after installation. Please try installing it manually.")
+        return False
+
+
+def install_appindicator():
+    logging.info("Checking AppIndicator installation...")
+    
+    package_manager = detect_package_manager()
+    
+    if package_manager != 'apt':
+        logging.error("This function is designed for Debian-based systems. Please install AppIndicator manually.")
+        return False
+    
+    try:
+        # First, update the package list
+        subprocess.run(['sudo', 'apt-get', 'update'], check=True)
+        
+        # Try to install AppIndicator3
+        subprocess.run(['sudo', 'apt-get', 'install', '-y', 'gir1.2-appindicator3-0.1'], check=True)
+        logging.info("AppIndicator3 installed successfully.")
+    except subprocess.CalledProcessError:
+        logging.warning("Failed to install AppIndicator3. Trying AyatanaAppIndicator3...")
+        try:
+            subprocess.run(['sudo', 'apt-get', 'install', '-y', 'gir1.2-ayatanaappindicator3-0.1'], check=True)
+            logging.info("AyatanaAppIndicator3 installed successfully.")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to install AyatanaAppIndicator3. Error: {e}")
+            return False
+    
+    logging.info("AppIndicator installation completed.")
+    return True        
+
+
+
+def check_camera_availability():
+    try:
+        cameras = [dev for dev in os.listdir('/dev') if dev.startswith('video')]
+        if cameras:
+            logging.info(f"Cameras detected: {cameras}")
+            return True
+        else:
+            logging.warning("No camera detected in /dev")
+            return False
+    except Exception as e:
+        logging.error(f"Error checking camera availability: {e}")
+        return False
+
+def select_screen_region():
+    try:
+        output = subprocess.check_output(["xrectsel"]).decode('utf-8').strip()
+        return output
+    except FileNotFoundError:
+        logging.warning("xrectsel not found. Using fallback method for screen selection.")
+        return "0,0,1920,1080"
+    except subprocess.CalledProcessError:
+        logging.warning("Error running xrectsel. Using fallback method for screen selection.")
+        return "0,0,1920,1080"
+
+if not check_and_install_dependencies():
+    logging.error("Not all dependencies could be installed. Some features may not work.")
+else:
+    logging.info("All critical dependencies are installed.")
+
+import psutil
+
+camera_available = check_camera_availability()
+
+import gi
+import cairo
+
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gst', '1.0')
+
+AppIndicator3 = None
 try:
-    # Try to acquire the lock
-    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except IOError:
-    # If the lock is already held by another process, exit
-    print("Another instance of the application is already running.")
-    sys.exit(1)
+    gi.require_version('AppIndicator3', '0.1')
+    from gi.repository import AppIndicator3
+except ValueError:
+    try:
+        gi.require_version('AyatanaAppIndicator3', '0.1')
+        from gi.repository import AyatanaAppIndicator3 as AppIndicator3
+    except ValueError:
+        logging.error("Neither AppIndicator3 nor AyatanaAppIndicator3 is available. The system tray icon will not be displayed.")
 
-# Ensure the lock is released on exit
-def release_lock():
-    fcntl.flock(lock_file, fcntl.LOCK_UN)
-    lock_file.close()
-    os.remove(lock_file_path)
+from gi.repository import Gtk, Gdk, GLib, Gst, GdkX11, GdkPixbuf, Pango
 
-atexit.register(release_lock)
+Gst.init(None)
+
+def import_camera_modules():
+    global GstVideo
+    try:
+        gi.require_version('GstVideo', '1.0')
+        from gi.repository import GstVideo
+        return True
+    except (ValueError, ImportError) as e:
+        logging.error(f"Failed to import GstVideo: {e}")
+        return False
+
+if camera_available:
+    camera_modules_imported = import_camera_modules()
+    if not camera_modules_imported:
+        camera_available = False
+        logging.error("Failed to import camera modules. Continuing without camera functionality.")
+else:
+    logging.error("No camera detected. Continuing without camera functionality.")
+
+
+def ensure_scrot_installed():
+    if not is_package_installed('scrot'):
+        logging.info("Scrot is not installed. Attempting to install...")
+        package_manager = detect_package_manager()
+        try:
+            if package_manager == 'apt':
+                subprocess.check_call(["sudo", "apt", "update"])
+                subprocess.check_call(["sudo", "apt", "install", "-y", "scrot"])
+            elif package_manager == 'pacman':
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "scrot"])
+            elif package_manager == 'dnf':
+                subprocess.check_call(["sudo", "dnf", "install", "-y", "scrot"])
+            elif package_manager == 'zypper':
+                subprocess.check_call(["sudo", "zypper", "install", "-y", "scrot"])
+            elif package_manager == 'emerge':
+                subprocess.check_call(["sudo", "emerge", "media-gfx/scrot"])
+            else:
+                logging.error(f"Unsupported package manager: {package_manager}")
+                return False
+            logging.info("Scrot installed successfully.")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to install scrot. Error: {e}")
+            return False
+    else:
+        logging.info("Scrot is already installed.")
+        return True
+
+
+def install_packages_debian_bookworm():
+    required_packages = [
+        'gir1.2-ayatanaappindicator3-0.1',
+        'python3-gi',
+        'python3-gi-cairo',
+        'mpv'
+    ]
+    
+    packages_to_install = [pkg for pkg in required_packages if not is_package_installed(pkg)]
+    
+    if not packages_to_install:
+        logging.info("All required packages are already installed.")
+        return
+    
+    try:
+        logging.info("Updating package list...")
+        subprocess.check_call(["sudo", "apt", "update"])
+        logging.info("Installing required packages...")
+        subprocess.check_call(["sudo", "apt", "install", "-y"] + packages_to_install)
+        logging.info("Required packages installed successfully.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install packages. Error: {e}")
+        sys.exit(1)
+
+def install_scrot():
+    logging.info("Attempting to install scrot...")
+    package_manager = detect_package_manager()
+    logging.info(f"Detected package manager: {package_manager}")
+    
+    if package_manager is None:
+        logging.error("Unable to detect package manager. Cannot install scrot.")
+        return
+    
+    try:
+        if package_manager == 'apt':
+            logging.info("Using apt to install scrot...")
+            subprocess.check_call(["sudo", "apt", "update"])
+            subprocess.check_call(["sudo", "apt", "install", "-y", "scrot"])
+        elif package_manager == 'pacman':
+            logging.info("Using pacman to install scrot...")
+            subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "scrot"])
+        elif package_manager == 'dnf':
+            logging.info("Using dnf to install scrot...")
+            subprocess.check_call(["sudo", "dnf", "install", "-y", "scrot"])
+        elif package_manager == 'zypper':
+            logging.info("Using zypper to install scrot...")
+            subprocess.check_call(["sudo", "zypper", "install", "-y", "scrot"])
+        elif package_manager == 'emerge':
+            logging.info("Using emerge to install scrot...")
+            subprocess.check_call(["sudo", "emerge", "media-gfx/scrot"])
+        else:
+            logging.error(f"Unsupported package manager: {package_manager}")
+            return
+        
+        logging.info("Scrot installation command completed successfully.")
+        
+        # Verify installation
+        if shutil.which('scrot'):
+            logging.info("Scrot is now available in the system path.")
+        else:
+            logging.warning("Scrot was supposedly installed but is not found in the system path.")
+        
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to install scrot. Error: {e}")
+        logging.error(f"Command that failed: {e.cmd}")
+        logging.error(f"Return code: {e.returncode}")
+        if e.output:
+            logging.error(f"Command output: {e.output}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while installing scrot: {str(e)}")
+
+import subprocess
+import logging
+import os
+import sys
+
+def is_debian_bookworm():
+    try:
+        with open('/etc/os-release', 'r') as f:
+            os_release = f.read()
+        return 'debian' in os_release.lower() and 'bookworm' in os_release.lower()
+    except FileNotFoundError:
+        return False
+
+def is_package_installed(package_name):
+    package_manager = detect_package_manager()
+    try:
+        if package_manager == 'apt':
+            subprocess.check_call(['dpkg', '-s', package_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif package_manager == 'pacman':
+            subprocess.check_call(['pacman', '-Qi', package_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif package_manager == 'dnf':
+            subprocess.check_call(['rpm', '-q', package_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif package_manager == 'zypper':
+            subprocess.check_call(['rpm', '-q', package_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif package_manager == 'emerge':
+            subprocess.check_call(['qlist', '-I', package_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            logging.error(f"Unsupported package manager: {package_manager}")
+            return False
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def install_packages():
+    package_manager = detect_package_manager()
+    
+    # Always try to install scrot, regardless of the distribution
+    ensure_scrot_installed()
+    
+    if is_debian_bookworm():
+        required_packages = [
+            'gir1.2-ayatanaappindicator3-0.1',
+            'python3-gi',
+            'python3-gi-cairo',
+            'mpv'
+        ]
+
+        packages_to_install = [pkg for pkg in required_packages if not is_package_installed(pkg)]
+
+        if not packages_to_install:
+            logging.info("All Debian Bookworm-specific packages are already installed.")
+        else:
+            try:
+                logging.info("Updating package list...")
+                subprocess.check_call(["sudo", "apt", "update"])
+
+                logging.info("Installing required Debian Bookworm-specific packages...")
+                subprocess.check_call(["sudo", "apt", "install", "-y"] + packages_to_install)
+
+                logging.info("Required Debian Bookworm-specific packages installed successfully.")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to install Debian Bookworm-specific packages. Error: {e}")
+    else:
+        logging.info("This is not Debian Bookworm. Only scrot has been installed.")
+
+# Call the function to install the packages
+install_packages()
+
+# Try to import AppIndicator3 or fall back to AyatanaAppIndicator3
+try:
+    import gi
+    gi.require_version('AppIndicator3', '0.1')
+    from gi.repository import AppIndicator3
+    logging.info("Using AppIndicator3 for system tray icon.")
+except (ImportError, ValueError):
+    try:
+        gi.require_version('AyatanaAppIndicator3', '0.1')
+        from gi.repository import AyatanaAppIndicator3 as AppIndicator3
+        logging.info("Using AyatanaAppIndicator3 for system tray icon.")
+    except (ImportError, ValueError):
+        logging.error("Neither AppIndicator3 nor AyatanaAppIndicator3 is available.")
+        sys.exit(1)
+
+# Rest of your script, including the use of AppIndicator3, follows here
+
+
+
+def draw(window):
+    cr = window.get_property('window').cairo_create()
+    cr.set_source_rgb(0, 0, 0)
+    cr.paint()
+
+display_server = detect_display_server()
+logging.info(f"Using {display_server} display server.")
+
+
+
+import os
+import subprocess
+
+def detect_display_server():
+    # Check environment variables
+    if 'WAYLAND_DISPLAY' in os.environ:
+        return 'wayland'
+    elif 'DISPLAY' in os.environ and 'WAYLAND_DISPLAY' not in os.environ:
+        return 'x11'
+    
+    # Check XDG_SESSION_TYPE
+    xdg_session_type = os.environ.get('XDG_SESSION_TYPE', '').lower()
+    if xdg_session_type in ['wayland', 'x11']:
+        return xdg_session_type
+    
+    # Check loginctl
+    try:
+        output = subprocess.check_output([
+            'loginctl', 'show-session', '$(loginctl show-user $(whoami) -p Display --value)',
+            '-p', 'Type', '--value'
+        ], universal_newlines=True).strip()
+        if output.lower() in ['wayland', 'x11']:
+            return output.lower()
+    except subprocess.CalledProcessError:
+        pass
+    
+    # Check for Wayland-specific processes
+    try:
+        output = subprocess.check_output(['ps', 'aux'], universal_newlines=True)
+        if any('wayland' in line.lower() for line in output.splitlines()):
+            return 'wayland'
+    except subprocess.CalledProcessError:
+        pass
+    
+    return 'unknown'
+
+
+
 
 
 
@@ -113,6 +1778,10 @@ class AudioVisualizer(Gtk.DrawingArea):
         self.left_level = left_level
         self.right_level = right_level
         self.queue_draw()
+
+
+
+
 
 class VideoTrimmingDialog(Gtk.Dialog):
     def __init__(self, parent, video_path):
@@ -870,10 +2539,15 @@ class VideoConverter:
 
 class ScreenRecorder(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Seekers StormOS Screen Recorder")
-        self.set_default_size(600, 450)
-
+        super().__init__(title="Seekers StormOS Screen Recorder Hybrid Edition")
+        self.copy_to_clipboard = False
+        self.save_to_file = False
         self.connect("delete-event", self.on_window_delete_event)
+        self.current_session_screenshots = []
+
+        # ... (rest of your initialization code)
+
+
 
 
         # Save a reference to the main window
@@ -898,6 +2572,11 @@ class ScreenRecorder(Gtk.Window):
         self.custom_region_end_x = None
         self.custom_region_end_y = None
 
+
+        # ... other initializations ...
+        self.recording_start_time = None
+        self.scheduled_end_time = None
+
         self.is_custom_region = False
 
         self.recording_region = None
@@ -906,7 +2585,7 @@ class ScreenRecorder(Gtk.Window):
         self.camera_window = None
         self.camera_window_id = None
 
-        self.image_size_percentage = 50  # Default to 50%
+        self.image_size_percentage = 25  # Default to 25%
 
         self.is_camera_on_top = False
         self.is_webcam_overlay = False  # New variable for webcam overlay
@@ -923,6 +2602,7 @@ class ScreenRecorder(Gtk.Window):
         self.webcam_size_percentage = 20
 
         self.scheduled_recordings = []
+        self.scheduled_end_time = None  # Initialize the scheduled_end_time attribute
         #self.create_tray_icon()
 
         self.webcam_positions = ["top-left", "top-right", "bottom-left", "bottom-right", "center"]
@@ -993,38 +2673,42 @@ class ScreenRecorder(Gtk.Window):
         # Controls & Streaming tab
         controls_camera_streaming_grid = self.create_controls_camera_streaming_grid()
         notebook.append_page(controls_camera_streaming_grid, 
-                             create_tab_label("media-playback-start", "Controls & Streaming"))
+                             create_tab_label("media-playback-start", "Controls & Streaming Tab"))
 
         # Overlay Settings tab
-        overlay_settings_grid = self.create_overlay_settings_tab()
-        notebook.append_page(overlay_settings_grid, 
-                             create_tab_label("preferences-desktop-display", "Overlay Settings"))
+        #overlay_settings_grid = self.create_overlay_settings_tab()
+        #notebook.append_page(overlay_settings_grid, 
+                             #create_tab_label("preferences-desktop-display", "Overlay Settings"))
 
         # Settings Tab
         settings_grid = self.create_settings_grid()
         notebook.append_page(settings_grid, 
-                             create_tab_label("preferences-system", "Settings"))
+                             create_tab_label("preferences-system", "Settings Tab"))
 
         # Camera Settings tab
         camera_settings_grid = self.create_camera_settings_grid()
         notebook.append_page(camera_settings_grid, 
-                             create_tab_label("camera-web", "Camera Settings"))
+                             create_tab_label("camera-web", "Camera Settings Tab"))
 
         # Scheduler Tab
         scheduler_grid = self.create_scheduler_tab()
         notebook.append_page(scheduler_grid, 
-                             create_tab_label("x-office-calendar", "Scheduler"))
+                             create_tab_label("x-office-calendar", "Scheduler Tab"))
 
         # Preview tab
         preview_grid = self.create_preview_tab()
         notebook.append_page(preview_grid, 
-                             create_tab_label("video-display", "Preview"))
+                             create_tab_label("video-display", "Preview Tab"))
 
+        # Screenshot Tool tab
+        screenshot_grid = self.create_screenshot_tab()
+        notebook.append_page(screenshot_grid, 
+                             create_tab_label("camera-photo", "Screenshot Tool Tab"))
 
-        # In the ScreenRecorder.__init__ method, add this line before the About Us tab:
+        # Video Converter tab
         converter_grid = self.create_converter_tab()
         notebook.append_page(converter_grid, 
-                             create_tab_label("video-x-generic", "Video Converter"))
+                             create_tab_label("video-x-generic", "Video Converter Tab"))
 
 
         # About Us tab
@@ -1429,12 +3113,70 @@ class ScreenRecorder(Gtk.Window):
 
         return grid
 
+
+
+    def create_screenshot_tab(self):
+        print("Creating screenshot tab")
+        screenshot_grid = Gtk.Grid()
+        screenshot_grid.set_column_spacing(10)
+        screenshot_grid.set_row_spacing(10)
+
+        # Capture Full Screen Button
+        btn_capture_full = Gtk.Button(label='Capture Full Screen')
+        btn_capture_full.connect("clicked", self.capture_full_screen)
+        screenshot_grid.attach(btn_capture_full, 0, 0, 1, 1)
+
+        # Capture Current Window Button
+        btn_capture_window = Gtk.Button(label='Capture Current Window')
+        btn_capture_window.connect("clicked", self.capture_current_window)
+        screenshot_grid.attach(btn_capture_window, 0, 1, 1, 1)
+
+        # Capture Selected Area Button
+        btn_capture_area = Gtk.Button(label='Capture Selected Area')
+        btn_capture_area.connect("clicked", self.capture_selected_area)
+        screenshot_grid.attach(btn_capture_area, 0, 2, 1, 1)
+
+        # Checkbox to enable/disable clipboard copying
+        self.copy_to_clipboard_checkbox = Gtk.CheckButton(label='Copy to Clipboard')
+        self.copy_to_clipboard_checkbox.connect("toggled", self.on_copy_to_clipboard_toggled)
+        screenshot_grid.attach(self.copy_to_clipboard_checkbox, 0, 3, 1, 1)
+
+        # Checkbox to enable/disable saving to file
+        self.save_to_file_checkbox = Gtk.CheckButton(label='Save to File')
+        self.save_to_file_checkbox.connect("toggled", self.on_save_to_file_toggled)
+        screenshot_grid.attach(self.save_to_file_checkbox, 0, 4, 1, 1)
+
+        # Add the info label
+        self.screenshot_info_label = Gtk.Label()
+        self.screenshot_info_label.set_line_wrap(True)
+        self.screenshot_info_label.set_max_width_chars(50)
+        self.screenshot_info_label.set_halign(Gtk.Align.START)
+        self.screenshot_info_label.set_valign(Gtk.Align.START)
+        screenshot_grid.attach(self.screenshot_info_label, 0, 5, 2, 1)
+
+        # Button to open recent saved screenshot
+        btn_open_recent = Gtk.Button(label='Open Recent Screenshot')
+        btn_open_recent.connect("clicked", self.open_recent_screenshot)
+        screenshot_grid.attach(btn_open_recent, 0, 6, 1, 1)
+
+        # Button to open default save location
+        btn_open_save_location = Gtk.Button(label='Open Save Location')
+        btn_open_save_location.connect("clicked", self.open_save_location)
+        screenshot_grid.attach(btn_open_save_location, 1, 6, 1, 1)
+
+        # Add preview image
+        self.preview_image = Gtk.Image()
+        self.preview_image.set_size_request(300, 200)  # Set a reasonable size
+        screenshot_grid.attach(self.preview_image, 0, 7, 2, 1)
+
+        return screenshot_grid
+
     def create_about_page(self):
         grid = Gtk.Grid()
         grid.set_column_spacing(10)
         grid.set_row_spacing(10)
 
-        about_label = Gtk.Label(label="Seekers StormOS Screen Recorder\nVersion 4.1_adv\n\nA powerful and easy-to-use screen recording application.")
+        about_label = Gtk.Label(label="Seekers StormOS Screen Recorder\nVersion 4.5_hybrid\n\nA powerful and easy-to-use screen recording application.")
         about_label.set_justify(Gtk.Justification.CENTER)
         grid.attach(about_label, 0, 0, 1, 1)
 
@@ -1448,10 +3190,42 @@ class ScreenRecorder(Gtk.Window):
             "2. For best performance, close unnecessary applications.\n"
             "3. If you encounter any issues, please report them to Seekers StormOS Project Team.\n"
             "4. Also please remember this program is a Work In Progress.\n"
+            "5. This Hybrid Version will look for needed dependencies and install them as needed.\n (Currently working in most Arch Distro's and in Manjaro. Also working in most Ubuntu's and some Debian's)\n"
+            "6. In this latest edition for the public I added a Screenshot Tab Tool.\n"
         )
         notes_label = Gtk.Label(label=notes_text)
         notes_label.set_justify(Gtk.Justification.LEFT)
         grid.attach(notes_label, 0, 2, 1, 1)
+
+#-----------------------------Bug Fixes Addition-------------------------
+
+        known_issues_text = (
+            "Known Issues and Bug Fixes:\n"
+            "1. Issue: Audio desync in long recordings\n"
+            "   Fix: Applied in v4.3 - Improved audio-video synchronization algorithm\n"
+            "2. Issue: Crash when recording on multi-monitor setups\n"
+            "   Status: Under investigation, temporary workaround available\n"
+            "3. Issue: High CPU usage on certain systems\n"
+            "   Fix: Partially addressed in v4.1 - Optimized encoding process\n"
+            "4. Issue: Inconsistent behavior with some window managers Doesnt work well with Gnome\n"
+            "   Status: Actively working on a fix, expected in next release\n"
+            "5. Added the ability within the program to tell the difference between Ubuntu and Debian systems using the Apt Package Manager\n"
+            "   Status: Actively working on a fix, expected in next release\n"
+            "   So for right now this code will wotk in all Arch Systems and Ubuntu and Debian that currently use Xfce not tested in Kde yet\n"
+            "6. Added a preview window inside the Screenshot Tab\n"
+            "7. Corrected Fps Issue within the start_record method and also corrected issue with Webcam Overlay not having hflip added on\n"
+            
+
+
+            #"\nFor the most up-to-date list of known issues and bug fixes, "
+            #"please visit our GitHub repository or contact our support team."
+        )
+        known_issues_label = Gtk.Label(label=known_issues_text)
+        known_issues_label.set_justify(Gtk.Justification.LEFT)
+        grid.attach(known_issues_label, 0, 3, 1, 1)
+
+#-----------------------------Bug Fixes Addition----End---------------------
+
 
         return grid     
 
@@ -1558,7 +3332,7 @@ class ScreenRecorder(Gtk.Window):
         # Add image size slider
         image_size_label = Gtk.Label(label="Image Size:")
         self.image_size_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 10, 100, 1)
-        self.image_size_scale.set_value(50)  # Default to 50% (original size)
+        self.image_size_scale.set_value(25)  # Default to 50% (original size)
         self.image_size_scale.connect("value-changed", self.on_image_size_changed)
         image_grid.attach(image_size_label, 0, 3, 1, 1)
         image_grid.attach(self.image_size_scale, 1, 3, 2, 1)
@@ -1592,7 +3366,7 @@ class ScreenRecorder(Gtk.Window):
             if os.path.exists(most_recent_recording):
                 # Switch to the Video Converter tab
                 notebook = self.get_child()
-                converter_page_index = 6  # Assuming Video Converter is the 7th tab (index 6)
+                converter_page_index = 6  # Adjust this index if needed
                 notebook.set_current_page(converter_page_index)
 
                 # Set the input file in the Video Converter
@@ -1625,33 +3399,33 @@ class ScreenRecorder(Gtk.Window):
         self.date_picker = Gtk.Calendar()
         grid.attach(self.date_picker, 1, 0, 1, 1)
 
-        # Time picker
-        time_label = Gtk.Label(label="Time:")
+        # Time picker for scheduled recordings
+        time_label = Gtk.Label(label="Start Time:")
         grid.attach(time_label, 0, 1, 1, 1)
         
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
         
-        self.hour_spin = Gtk.SpinButton.new_with_range(1, 12, 1)
-        time_box.pack_start(self.hour_spin, False, False, 0)
+        self.schedule_hour_spin = Gtk.SpinButton.new_with_range(1, 12, 1)
+        time_box.pack_start(self.schedule_hour_spin, False, False, 0)
         
         time_box.pack_start(Gtk.Label(label=":"), False, False, 0)
         
-        self.minute_spin = Gtk.SpinButton.new_with_range(0, 59, 1)
-        self.minute_spin.set_value(0)
-        time_box.pack_start(self.minute_spin, False, False, 0)
+        self.schedule_minute_spin = Gtk.SpinButton.new_with_range(0, 59, 1)
+        self.schedule_minute_spin.set_value(0)
+        time_box.pack_start(self.schedule_minute_spin, False, False, 0)
         
-        self.am_pm_combo = Gtk.ComboBoxText()
-        self.am_pm_combo.append_text("AM")
-        self.am_pm_combo.append_text("PM")
-        time_box.pack_start(self.am_pm_combo, False, False, 0)
+        self.schedule_am_pm_combo = Gtk.ComboBoxText()
+        self.schedule_am_pm_combo.append_text("AM")
+        self.schedule_am_pm_combo.append_text("PM")
+        time_box.pack_start(self.schedule_am_pm_combo, False, False, 0)
         
         grid.attach(time_box, 1, 1, 1, 1)
 
-        # Set current time
+        # Set current time for scheduled recordings
         current_time = datetime.now()
-        self.hour_spin.set_value(current_time.hour if current_time.hour <= 12 else current_time.hour - 12)
-        self.minute_spin.set_value(current_time.minute)
-        self.am_pm_combo.set_active(0 if current_time.hour < 12 else 1)
+        self.schedule_hour_spin.set_value(current_time.hour % 12 or 12)
+        self.schedule_minute_spin.set_value(current_time.minute)
+        self.schedule_am_pm_combo.set_active(0 if current_time.hour < 12 else 1)
 
         # Duration
         duration_label = Gtk.Label(label="Duration:")
@@ -1731,6 +3505,67 @@ class ScreenRecorder(Gtk.Window):
         self.current_time_label = Gtk.Label()
         grid.attach(self.current_time_label, 0, 13, 2, 1)
 
+        # Add "Start Now" button and current time display
+        start_now_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+
+        # Current time display (read-only)
+        self.current_hour_spin = Gtk.SpinButton.new_with_range(1, 12, 1)
+        self.current_hour_spin.set_editable(False)
+        start_now_box.pack_start(self.current_hour_spin, False, False, 0)
+
+        start_now_box.pack_start(Gtk.Label(label=":"), False, False, 0)
+
+        self.current_minute_spin = Gtk.SpinButton.new_with_range(0, 59, 1)
+        self.current_minute_spin.set_editable(False)
+        start_now_box.pack_start(self.current_minute_spin, False, False, 0)
+
+        # AM/PM combo box for current time
+        self.current_am_pm_combo = Gtk.ComboBoxText()
+        self.current_am_pm_combo.append_text("AM")
+        self.current_am_pm_combo.append_text("PM")
+        self.current_am_pm_combo.set_sensitive(False)  # Make it read-only
+        start_now_box.pack_start(self.current_am_pm_combo, False, False, 0)
+
+        # Start Now button
+        start_now_button = Gtk.Button(label="Start Recording Now")
+        start_now_button.connect("clicked", self.start_recording_now)
+        start_now_box.pack_start(start_now_button, True, True, 0)
+
+        grid.attach(start_now_box, 0, 14, 2, 1)  # Span 2 columns
+
+        # Add end time picker for "Start Now" functionality
+        end_time_label = Gtk.Label(label="End Time:")
+        grid.attach(end_time_label, 0, 15, 1, 1)
+
+        end_time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+
+        # Hour spinner (12-hour format)
+        self.end_hour_spin = Gtk.SpinButton.new_with_range(1, 12, 1)
+        self.end_hour_spin.set_wrap(True)
+        end_time_box.pack_start(self.end_hour_spin, False, False, 0)
+
+        end_time_box.pack_start(Gtk.Label(label=":"), False, False, 0)
+
+        # Minute spinner
+        self.end_minute_spin = Gtk.SpinButton.new_with_range(0, 59, 1)
+        self.end_minute_spin.set_wrap(True)
+        end_time_box.pack_start(self.end_minute_spin, False, False, 0)
+
+        # AM/PM combo box
+        self.end_time_am_pm = Gtk.ComboBoxText()
+        self.end_time_am_pm.append_text("AM")
+        self.end_time_am_pm.append_text("PM")
+        self.end_time_am_pm.set_active(0)  # Default to AM
+        end_time_box.pack_start(self.end_time_am_pm, False, False, 0)
+
+        grid.attach(end_time_box, 1, 15, 1, 1)
+
+        # Set default end time (e.g., 1 hour from now)
+        current_time = datetime.now()
+        default_end_time = current_time + timedelta(hours=1)
+        self.end_hour_spin.set_value(default_end_time.hour % 12 or 12)  # Convert to 12-hour format
+        self.end_minute_spin.set_value(default_end_time.minute)
+        self.end_time_am_pm.set_active(0 if default_end_time.hour < 12 else 1)
 
         # Start updating current time and date
         self.update_current_time_display()
@@ -1754,11 +3589,166 @@ class ScreenRecorder(Gtk.Window):
 
 
 
+    import threading
+    import time
+    from datetime import datetime, timedelta
+
+
+
+    def start_recording_now(self, widget):
+        try:
+            # Get current system time
+            current_time = datetime.fromtimestamp(time.time())
+            logging.info(f"Current system time: {current_time}")
+            
+            # Get end time from spin buttons and AM/PM combo box
+            end_hour = self.end_hour_spin.get_value_as_int()
+            end_minute = self.end_minute_spin.get_value_as_int()
+            is_pm = self.end_time_am_pm.get_active_text() == "PM"
+            
+            # Adjust hour for PM
+            if is_pm and end_hour != 12:
+                end_hour += 12
+            elif not is_pm and end_hour == 12:
+                end_hour = 0  # 12 AM is 00:00 in 24-hour format
+            
+            logging.info(f"User set end time to: {end_hour:02d}:{end_minute:02d} {'PM' if is_pm else 'AM'}")
+            
+            # Calculate end time based on the current time
+            end_time = current_time.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+            
+            # If end time is earlier than current time, add a day
+            if end_time <= current_time:
+                end_time += timedelta(days=1)
+                logging.info("End time adjusted to next day")
+            
+            duration = (end_time - current_time).total_seconds()  # Duration in seconds
+            
+            logging.info(f"Calculated end time: {end_time}")
+            logging.info(f"Recording duration: {duration} seconds")
+
+            # Set recording start time and scheduled end time
+            self.recording_start_time = current_time
+            self.scheduled_end_time = end_time
+
+            # Format end time string
+            end_time_str = end_time.strftime('%I:%M %p').lstrip('0')
+            if end_time_str.startswith('0'):
+                end_time_str = end_time_str[1:]
+
+            # Add to scheduled recordings
+            self.scheduled_recordings.append({
+                'time': current_time,
+                'duration': duration / 60,
+                'display_time': current_time.strftime('%I:%M %p'),
+                'display_date': current_time.strftime('%Y-%m-%d'),
+                'display_duration': f"{int(duration // 3600)}h {int((duration % 3600) // 60)}m"
+            })
+            
+            self.update_schedule_list()
+            self.start_scheduler()
+            self.update_tray_tooltip()
+            
+            # Start recording immediately
+            if not self.is_recording:
+                self.start_recording(None)
+            else:
+                logging.warning("Recording is already in progress. Not starting a new one.")
+            
+            # Start a timer thread
+            timer_thread = threading.Thread(target=self.recording_timer, args=(duration, time.time()))
+            timer_thread.start()
+            
+            # Log the start of the recording instead of showing a dialog
+            logging.info(f"Recording started at {current_time.strftime('%Y-%m-%d %I:%M %p')}")
+            logging.info(f"Recording scheduled to stop at: {end_time_str}")
+            
+            # Update the status label instead of showing a dialog
+            GLib.idle_add(self.status_label.set_text, f"Recording started. Will stop at {end_time_str}")
+            
+        except Exception as e:
+            logging.error(f"Error in start_recording_now: {e}", exc_info=True)
+            self.show_error_dialog(f"Failed to start recording: {str(e)}")
+
+
+
+    def recording_timer(self, duration, start_time):
+        logging.info(f"Timer started for {duration} seconds")
+        while self.is_recording and (time.time() - start_time) < duration:
+            remaining = duration - (time.time() - start_time)
+            logging.info(f"Recording in progress. {remaining:.2f} seconds remaining.")
+            time.sleep(1)  # Check every second
+        
+        if self.is_recording:
+            logging.info("Timer completed. Stopping recording.")
+            self.stop_recording_from_timer()
+        else:
+            logging.info("Recording was stopped before timer completed.")
+
+    def stop_recording_from_timer(self):
+        logging.info("stop_recording_from_timer called")
+        GLib.idle_add(self.safe_stop_recording)
+
+    def safe_stop_recording(self):
+        logging.info("safe_stop_recording called")
+        if self.is_recording:
+            self.stop_recording(None)
+        else:
+            logging.warning("safe_stop_recording called but is_recording is already False")
+        # De-toggle the timer in the main window
+        self.timer_checkbox.set_active(False)
+        # De-toggle the timer in the tray icon menu
+        for item in self.indicator.get_menu().get_children():
+            if isinstance(item, Gtk.CheckMenuItem) and item.get_label() == "Enable Timer":
+                item.set_active(False)
+        return False  # Important for GLib.idle_add
+
+
+    def check_system_time(self):
+        system_time = datetime.fromtimestamp(time.time())
+        if abs((datetime.now() - system_time).total_seconds()) > 60:  # If difference is more than 1 minute
+            logging.warning(f"System time ({system_time}) differs significantly from Python's datetime.now() ({datetime.now()})")
+            self.show_warning_dialog("The system time may be incorrect. Please check your system clock settings.")
+
+
+
+    def check_and_correct_python_time(self):
+        system_time = datetime.fromtimestamp(time.time())
+        python_time = datetime.now()
+        if abs((python_time - system_time).total_seconds()) > 60:  # If difference is more than 1 minute
+            logging.warning(f"Python time ({python_time}) differs from system time ({system_time}). Attempting to correct.")
+            # Attempt to correct Python's time
+            try:
+                import ntplib
+                client = ntplib.NTPClient()
+                response = client.request('pool.ntp.org')
+                corrected_time = datetime.fromtimestamp(response.tx_time)
+                logging.info(f"Time corrected to: {corrected_time}")
+                # You might need to use this corrected time throughout your application
+            except:
+                logging.error("Failed to correct time using NTP. Please check your system clock manually.")
+                self.show_warning_dialog("The system time may be incorrect. Please check your system clock settings.")
+
 
 
     def update_current_time_display(self):
         current_time = datetime.now()
         self.current_time_label.set_text(current_time.strftime("%Y-%m-%d %I:%M:%S %p"))
+        
+        # Update the current time spinners and AM/PM combo for "Start Recording Now"
+        self.current_hour_spin.set_value(current_time.hour % 12 or 12)
+        self.current_minute_spin.set_value(current_time.minute)
+        self.current_am_pm_combo.set_active(0 if current_time.hour < 12 else 1)
+        
+        # Update the time picker for scheduled recordings
+        self.schedule_hour_spin.set_value(current_time.hour % 12 or 12)
+        self.schedule_minute_spin.set_value(current_time.minute)
+        self.schedule_am_pm_combo.set_active(0 if current_time.hour < 12 else 1)
+        
+        # Update the date picker
+        self.date_picker.select_month(current_time.month - 1, current_time.year)
+        self.date_picker.select_day(current_time.day)
+        
         return True  # Continue calling this function every second
 
 
@@ -1810,9 +3800,9 @@ class ScreenRecorder(Gtk.Window):
 
     def add_to_schedule(self, widget):
         year, month, day = self.date_picker.get_date()
-        hours = self.hour_spin.get_value_as_int()
-        minutes = self.minute_spin.get_value_as_int()
-        am_pm = self.am_pm_combo.get_active_text()
+        hours = self.schedule_hour_spin.get_value_as_int()
+        minutes = self.schedule_minute_spin.get_value_as_int()
+        am_pm = self.schedule_am_pm_combo.get_active_text()
 
         # Convert to 24-hour format
         if am_pm == "PM" and hours != 12:
@@ -1827,12 +3817,12 @@ class ScreenRecorder(Gtk.Window):
         start_time = datetime(year, month + 1, day, hours, minutes)  # month + 1 because Gtk.Calendar months are 0-11
 
         if start_time <= datetime.now():
-            self.show_error_dialog("Cannot schedule recordings in the past.")
+            self.scheduler_status_label.set_text("Cannot schedule recordings in the past.")
             return
 
         total_duration_minutes = duration_hours * 60 + duration_minutes
         if total_duration_minutes == 0:
-            self.show_error_dialog("Duration must be greater than 0.")
+            self.scheduler_status_label.set_text("Duration must be greater than 0.")
             return
 
         self.scheduled_recordings.append({
@@ -1846,8 +3836,7 @@ class ScreenRecorder(Gtk.Window):
         self.start_scheduler()
         self.update_tray_tooltip()
 
-        # Optionally, show a confirmation message
-        self.show_info_dialog(f"Recording scheduled for {start_time.strftime('%Y-%m-%d %I:%M %p')}")
+        self.scheduler_status_label.set_text(f"Recording scheduled for {start_time.strftime('%Y-%m-%d %I:%M %p')}")
 
 
     def start_scheduled_recording(self, recording):
@@ -1872,8 +3861,15 @@ class ScreenRecorder(Gtk.Window):
                 except (subprocess.SubprocessError, FileNotFoundError):
                     logging.warning("xdotool not available or failed to minimize window")
 
+            # Set the recording start time
+            self.recording_start_time = datetime.now()
+            
+            # Calculate and set the scheduled end time
+            duration_minutes = recording['duration']
+            self.scheduled_end_time = self.recording_start_time + timedelta(minutes=duration_minutes)
+
             # Start the recording
-            self.start_recording(None)  # Removed the scheduled keyword argument
+            self.start_recording(None)
 
             # Schedule the stop_recording call after the specified duration
             duration_ms = recording['duration'] * 60 * 1000  # Convert minutes to milliseconds
@@ -1883,7 +3879,244 @@ class ScreenRecorder(Gtk.Window):
         GLib.idle_add(delayed_start)
         return False  # Important for GLib.idle_add
 #------------------------------------------------------------------------------------------------
+#-----------------------------------Screenshot tool---------------------------------------------
 
+
+    def on_copy_to_clipboard_toggled(self, widget):
+        self.copy_to_clipboard = widget.get_active()
+        print(f"Copy to clipboard toggled: {self.copy_to_clipboard}")
+        print(f"Current state - Copy to clipboard: {self.copy_to_clipboard}, Save to file: {self.save_to_file}")
+        self.update_screenshot_info()
+
+    def on_save_to_file_toggled(self, widget):
+        self.save_to_file = widget.get_active()
+        print(f"Save to file toggled: {self.save_to_file}")
+        print(f"Current state - Copy to clipboard: {self.copy_to_clipboard}, Save to file: {self.save_to_file}")
+        self.update_screenshot_info()
+
+    def capture_full_screen(self, widget):
+        self.capture_screenshot([], "fullscreen")
+
+    def capture_current_window(self, widget):
+        self.capture_screenshot(["-u", "-b"], "current_window")
+
+    def capture_selected_area(self, widget):
+        self.capture_screenshot(["-s"], "selected_area")
+
+    def capture_screenshot(self, scrot_args, filename_prefix):
+        if not self.copy_to_clipboard and not self.save_to_file:
+            self.screenshot_info_label.set_text("Please select at least one option: Copy to Clipboard or Save to File.")
+            return
+
+        use_temp_file = self.copy_to_clipboard and not self.save_to_file
+        
+        pictures_dir = os.path.expanduser("~") + "/Pictures"
+        if not os.path.exists(pictures_dir):
+            os.makedirs(pictures_dir)
+                
+        save_path = os.path.join(pictures_dir, self.generate_unique_filename(filename_prefix)) if not use_temp_file else "/tmp/temp_screenshot.png"
+        
+        print(f"Saving screenshot to: {save_path}")
+        
+        self.iconify()
+        
+        GLib.timeout_add(500, self._take_screenshot, scrot_args, save_path, use_temp_file)
+
+        # Always add the screenshot to the list
+        self.current_session_screenshots.append(save_path)
+        print(f"Added to current session screenshots: {save_path}")  # Debug print
+
+        GLib.timeout_add(1000, self.delayed_preview_update, save_path, use_temp_file)
+
+
+    def delayed_preview_update(self, save_path, use_temp_file):
+        if use_temp_file:
+            # For clipboard images
+            clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+            if clipboard.wait_is_image_available():
+                try:
+                    pixbuf = clipboard.wait_for_image()
+                    if pixbuf:
+                        self.update_preview_image_from_pixbuf(pixbuf)
+                    else:
+                        print("No image in clipboard")
+                except Exception as e:
+                    print(f"Error getting image from clipboard: {e}")
+            else:
+                print("No image available in clipboard")
+        else:
+            # For saved files
+            if os.path.exists(save_path):
+                try:
+                    self.update_preview_image(save_path)
+                except Exception as e:
+                    print(f"Error updating preview image: {e}")
+            else:
+                print(f"File not found, retrying in 1 second: {save_path}")
+                GLib.timeout_add(1000, self.delayed_preview_update, save_path, use_temp_file)
+        return False
+
+    def _take_screenshot(self, scrot_args, save_path, use_temp_file):
+        if self.save_to_file or use_temp_file:
+            command = ["scrot", *scrot_args, save_path]
+            print(f"Running command: {' '.join(command)}")
+            result = subprocess.run(command, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"Error taking screenshot: {result.stderr}")
+                return False
+            else:
+                print("Screenshot taken successfully")
+        
+        if self.copy_to_clipboard:
+            subprocess.run(["xclip", "-selection", "clipboard", "-t", "image/png", "-i", save_path])
+            if use_temp_file:
+                os.remove(save_path)
+                print(f"Temporary file removed: {save_path}")
+                # Remove the temporary file from the list
+                if save_path in self.current_session_screenshots:
+                    self.current_session_screenshots.remove(save_path)
+                    print(f"Removed from current session screenshots: {save_path}")
+                GLib.idle_add(self.screenshot_info_label.set_text, "Screenshot copied to clipboard")
+            elif self.save_to_file:
+                GLib.idle_add(self.screenshot_info_label.set_text, f"Screenshot saved to {save_path} and copied to clipboard")
+            else:
+                GLib.idle_add(self.screenshot_info_label.set_text, "Screenshot copied to clipboard")
+        elif self.save_to_file:
+            GLib.idle_add(self.screenshot_info_label.set_text, f"Screenshot saved to {save_path}")
+        
+        self.present()
+        
+        return False
+
+    def update_preview_image(self, filepath):
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(filepath)
+            self.update_preview_image_from_pixbuf(pixbuf)
+            print(f"Preview image updated from file: {filepath}")
+        except Exception as e:
+            print(f"Error updating preview image from file: {e}")
+            self.preview_image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
+
+    def update_preview_image_from_pixbuf(self, pixbuf):
+        try:
+            # Get the original width and height
+            width = pixbuf.get_width()
+            height = pixbuf.get_height()
+            
+            # Calculate the scaling factor
+            scale_factor = min(800 / width, 800 / height)
+            
+            # Calculate new dimensions
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            
+            # Scale the pixbuf
+            scaled_pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+            
+            # Set the scaled pixbuf to the image widget
+            self.preview_image.set_from_pixbuf(scaled_pixbuf)
+            
+            print("Preview image updated from pixbuf")
+        except Exception as e:
+            print(f"Error updating preview image from pixbuf: {e}")
+            self.preview_image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
+
+
+
+
+    def clear_current_session_screenshots(self):
+        self.current_session_screenshots.clear()
+
+
+
+    def generate_unique_filename(self, prefix="screenshot"):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{prefix}_{timestamp}.png"
+        print(f"Generated filename: {filename}")  # Debug print
+        return filename
+
+
+    import subprocess
+    import os
+    from gi.repository import Gtk, Gio
+
+    def open_recent_screenshot(self, widget):
+        print(f"Current session screenshots: {self.current_session_screenshots}")  # Debug print
+        if self.current_session_screenshots:
+            most_recent = self.current_session_screenshots[-1]
+            
+            print(f"Attempting to open: {most_recent}")
+            
+            if os.path.exists(most_recent):
+                try:
+                    self.open_file(most_recent)
+                    self.screenshot_info_label.set_text(f"Opened: {os.path.basename(most_recent)}")
+                except Exception as e:
+                    error_message = f"Error opening file: {e}"
+                    print(error_message)
+                    self.screenshot_info_label.set_text(error_message)
+            else:
+                message = f"File not found: {most_recent}"
+                print(message)
+                self.screenshot_info_label.set_text(message)
+        else:
+            message = "No screenshots taken in this session."
+            print(message)
+            self.screenshot_info_label.set_text(message)
+
+    def open_file(self, file_path):
+        try:
+            Gio.AppInfo.launch_default_for_uri(f"file://{file_path}")
+        except Exception as e:
+            print(f"Error opening file with Gio: {e}")
+            try:
+                if os.name == 'posix':  # For Linux and macOS
+                    subprocess.call(('xdg-open', file_path))
+                elif os.name == 'nt':  # For Windows
+                    os.startfile(file_path)
+                else:
+                    raise OSError("Unsupported operating system")
+            except Exception as e:
+                raise Exception(f"Failed to open file: {e}")
+
+    def open_save_location(self, widget):
+        pictures_dir = os.path.expanduser("~") + "/Pictures"
+        if os.path.exists(pictures_dir):
+            try:
+                self.open_file(pictures_dir)
+            except Exception as e:
+                self.screenshot_info_label.set_text(f"Error opening Pictures directory: {e}")
+        else:
+            self.screenshot_info_label.set_text("Pictures directory not found.")
+
+
+
+    def update_screenshot_info(self):
+        if self.copy_to_clipboard and self.save_to_file:
+            info = "Screenshots will be copied to clipboard and saved to file."
+        elif self.copy_to_clipboard:
+            info = "Screenshots will be copied to clipboard only."
+        elif self.save_to_file:
+            info = "Screenshots will be saved to file only."
+        else:
+            info = "Please select at least one option: Copy to Clipboard or Save to File."
+        print(f"Updating info label: {info}")
+        self.screenshot_info_label.set_text(info)
+
+
+
+    def clear_session_screenshots(self):
+        self.current_session_screenshots.clear()
+
+
+
+
+    def on_window_delete_event(self, widget, event):
+        self.hide()
+        return True  # Prevents the window from being destroyed
+
+
+#-----------------------------------Screenshot tool End-----------------------------------------
 #-------------------------------Fix for different Monitor sizes-------------------
 
 
@@ -2075,13 +4308,23 @@ class ScreenRecorder(Gtk.Window):
 
 
     def stop_scheduled_recording(self, recording):
-        logging.info(f"Stopping scheduled recording: {recording['display_date']} {recording['display_time']}")
-        self.stop_recording(None, scheduled=True)
+        logging.info(f"Attempting to stop scheduled recording: {recording['display_date']} {recording['display_time']}")
+        if self.is_recording:
+            self.stop_recording(None)
+            logging.info("Recording stopped successfully")
+        else:
+            logging.warning("Attempted to stop recording, but no recording was in progress")
+        
+        # Remove this recording from the scheduled recordings list
+        if recording in self.scheduled_recordings:
+            self.scheduled_recordings.remove(recording)
+            self.update_schedule_list()
         
         # Add the recording to the completed list
         self.completed_scheduled_recordings.append(recording)
         self.update_completed_schedule_list()
         
+        self.update_tray_tooltip()
         return False  # Important for GLib.timeout_add
 
 
@@ -2315,37 +4558,39 @@ class ScreenRecorder(Gtk.Window):
 
     def on_preview_draw(self, widget, cr):
         allocation = widget.get_allocation()
+        width = allocation.width
+        height = allocation.height
+
+        # Draw black background
         cr.set_source_rgb(0, 0, 0)
-        cr.paint()
+        cr.rectangle(0, 0, width, height)
+        cr.fill()
 
-        with self.preview_lock:
-            if self.preview_pixbuf:
-                monitor_geometry = self.selected_preview_monitor['geometry']
-                aspect_ratio = monitor_geometry.width / monitor_geometry.height
+        # If we have a preview pixbuf, draw it
+        if hasattr(self, 'preview_pixbuf') and self.preview_pixbuf is not None:
+            pixbuf_width = self.preview_pixbuf.get_width()
+            pixbuf_height = self.preview_pixbuf.get_height()
 
-                preview_width = allocation.width
-                preview_height = int(preview_width / aspect_ratio)
+            # Calculate scaling to fit the widget while maintaining aspect ratio
+            scale = min(width / pixbuf_width, height / pixbuf_height)
+            new_width = int(pixbuf_width * scale)
+            new_height = int(pixbuf_height * scale)
 
-                if preview_height > allocation.height:
-                    preview_height = allocation.height
-                    preview_width = int(preview_height * aspect_ratio)
+            # Center the image
+            x = (width - new_width) // 2
+            y = (height - new_height) // 2
 
-                scaled_pixbuf = self.preview_pixbuf.scale_simple(preview_width, preview_height, GdkPixbuf.InterpType.BILINEAR)
+            # Scale and draw the pixbuf
+            scaled_pixbuf = self.preview_pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+            Gdk.cairo_set_source_pixbuf(cr, scaled_pixbuf, x, y)
+            cr.paint()
 
-                x_offset = (allocation.width - preview_width) // 2
-                y_offset = (allocation.height - preview_height) // 2
-
-                Gdk.cairo_set_source_pixbuf(cr, scaled_pixbuf, x_offset, y_offset)
-                cr.paint()
-
-                # Draw overlays if enabled
-                if self.preview_overlay_toggle.get_active():
-                    cr.save()
-                    cr.translate(x_offset, y_offset)
-                    cr.scale(preview_width / self.preview_pixbuf.get_width(), 
-                             preview_height / self.preview_pixbuf.get_height())
-                    self.draw_overlays(cr, self.preview_pixbuf.get_width(), self.preview_pixbuf.get_height())
-                    cr.restore()
+        # Draw overlays if enabled
+        if self.preview_overlay_toggle.get_active() and self.enable_overlay_checkbox.get_active():
+            if self.enable_text_overlay.get_active():
+                self.draw_text_overlay(cr, width, height)
+            if self.enable_image_overlay.get_active():
+                self.draw_image_overlay(cr, width, height)
 
         return False
 
@@ -2396,21 +4641,21 @@ class ScreenRecorder(Gtk.Window):
 
 
 
-    def calculate_image_position(self, image, width, height, position):
-        image_width = image.get_width()
-        image_height = image.get_height()
+    def calculate_image_position(self, pixbuf, width, height):
+        image_width = pixbuf.get_width()
+        image_height = pixbuf.get_height()
         
-        if position == "top-left":
+        if self.image_position == "top-left":
             return 10, 10
-        elif position == "top-center":
+        elif self.image_position == "top-center":
             return (width - image_width) // 2, 10
-        elif position == "top-right":
+        elif self.image_position == "top-right":
             return width - image_width - 10, 10
-        elif position == "bottom-left":
+        elif self.image_position == "bottom-left":
             return 10, height - image_height - 10
-        elif position == "bottom-center":
+        elif self.image_position == "bottom-center":
             return (width - image_width) // 2, height - image_height - 10
-        elif position == "bottom-right":
+        elif self.image_position == "bottom-right":
             return width - image_width - 10, height - image_height - 10
         else:
             return 10, 10  # Default to top-left if position is not recognized
@@ -2432,14 +4677,6 @@ class ScreenRecorder(Gtk.Window):
 
 
 
-    def on_overlay_settings_changed(self, widget):
-        if self.is_journal_mode:
-            logging.info("Overlay settings cannot be changed in Journal mode")
-            return
-
-        if self.preview_active:
-            self.preview_area.queue_draw()
-        self.update_tray_tooltip()
 
 
     def exit_journal_mode(self):
@@ -2821,45 +5058,40 @@ class ScreenRecorder(Gtk.Window):
 
 
     def draw_image_overlay(self, cr, width, height):
-        image_path = self.image_path_entry.get_text()
-        if image_path and os.path.isfile(image_path):
-            try:
-                original_image = GdkPixbuf.Pixbuf.new_from_file(image_path)
-                
-                # Calculate the maximum allowed size for the overlay
-                max_width = int(width * 0.3)  # 30% of video width
-                max_height = int(height * 0.3)  # 30% of video height
-                
-                # Calculate the scale factor based on the image_size_percentage
-                scale_factor = self.image_size_percentage / 100.0
-                
-                # Calculate new dimensions while maintaining aspect ratio
-                image_aspect = original_image.get_width() / original_image.get_height()
-                new_width = min(original_image.get_width() * scale_factor, max_width)
-                new_height = new_width / image_aspect
-                
-                if new_height > max_height:
-                    new_height = max_height
-                    new_width = new_height * image_aspect
-                
-                # Ensure dimensions are integers
-                new_width = int(new_width)
-                new_height = int(new_height)
-                
-                # Scale the image
-                scaled_image = original_image.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+        if not hasattr(self, 'image_path') or not self.image_path or not os.path.exists(self.image_path):
+            return
 
-                # Calculate position
-                position = self.image_position_combo.get_active_text()
-                x, y = self.calculate_image_position(scaled_image, width, height, position)
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(self.image_path)
+            
+            # Calculate the new size based on the scale value
+            scale_factor = self.image_size_percentage / 100.0
+            original_width = pixbuf.get_width()
+            original_height = pixbuf.get_height()
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+            
+            # Ensure the new size doesn't exceed the preview area
+            max_width = width * 0.8  # Limit to 80% of preview width
+            max_height = height * 0.8  # Limit to 80% of preview height
+            if new_width > max_width or new_height > max_height:
+                scale = min(max_width / new_width, max_height / new_height)
+                new_width = int(new_width * scale)
+                new_height = int(new_height * scale)
+            
+            # Scale the image
+            scaled_pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+            
+            # Calculate position
+            x, y = self.calculate_image_position(scaled_pixbuf, width, height)
+            
+            # Draw the image
+            Gdk.cairo_set_source_pixbuf(cr, scaled_pixbuf, x, y)
+            cr.paint()
+            
+        except GLib.Error as e:
+            print(f"Error loading or drawing image: {e}")
 
-                # Draw the image
-                Gdk.cairo_set_source_pixbuf(cr, scaled_image, x, y)
-                cr.paint()
-                
-                logging.info(f"Image overlay drawn: size={new_width}x{new_height}, position={x},{y}, scale_factor={scale_factor}")
-            except Exception as e:
-                logging.error(f"Error drawing image overlay: {e}")
 
 
 
@@ -2940,12 +5172,14 @@ class ScreenRecorder(Gtk.Window):
         dialog.destroy()
 
 
+#---------------------Combined Overlay Start-----------------------------------------
+
     def create_preview_tab(self):
         preview_grid = Gtk.Grid()
         preview_grid.set_column_spacing(10)
         preview_grid.set_row_spacing(10)
 
-        # Add monitor selection
+        # Monitor selection
         monitor_label = Gtk.Label(label="Select Monitor to Preview:")
         preview_grid.attach(monitor_label, 0, 0, 1, 1)
 
@@ -2959,32 +5193,220 @@ class ScreenRecorder(Gtk.Window):
             self.preview_monitor_combo.append_text("No monitors detected")
             self.preview_monitor_combo.set_active(0)
             self.preview_monitor_combo.set_sensitive(False)
+        preview_grid.attach(self.preview_monitor_combo, 1, 0, 3, 1)
 
-        preview_grid.attach(self.preview_monitor_combo, 1, 0, 1, 1)
-
+        # Preview area
         self.preview_area = Gtk.DrawingArea()
-        self.preview_area.set_size_request(900, 500)  # or whatever size you prefer
+        self.preview_area.set_size_request(900, 500)
         self.preview_area.connect('draw', self.on_preview_draw)
-        preview_grid.attach(self.preview_area, 0, 1, 2, 1)
+        preview_grid.attach(self.preview_area, 0, 1, 4, 1)
 
+        # Preview controls
+        controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        
         start_preview_button = Gtk.Button(label="Start Preview")
         start_preview_button.connect("clicked", self.start_preview)
-        preview_grid.attach(start_preview_button, 0, 2, 1, 1)
+        controls_box.pack_start(start_preview_button, True, True, 0)
 
         stop_preview_button = Gtk.Button(label="Stop Preview")
         stop_preview_button.connect("clicked", self.stop_preview)
-        preview_grid.attach(stop_preview_button, 1, 2, 1, 1)
+        controls_box.pack_start(stop_preview_button, True, True, 0)
 
-
-        # Add overlay controls
         self.preview_overlay_toggle = Gtk.CheckButton(label="Show Overlays")
         self.preview_overlay_toggle.connect("toggled", self.on_preview_overlay_toggled)
-        preview_grid.attach(self.preview_overlay_toggle, 0, 3, 2, 1)
+        controls_box.pack_start(self.preview_overlay_toggle, True, True, 0)
 
+        preview_grid.attach(controls_box, 0, 2, 4, 1)
+
+        # Overlay settings
+        overlay_frame = Gtk.Frame(label="Overlay Settings")
+        overlay_grid = Gtk.Grid()
+        overlay_grid.set_column_spacing(20)
+        overlay_grid.set_row_spacing(10)
+        overlay_frame.add(overlay_grid)
+
+        self.enable_overlay_checkbox = Gtk.CheckButton(label="Enable Global Overlay")
+        self.enable_overlay_checkbox.connect("toggled", self.on_global_overlay_toggled)
+        overlay_grid.attach(self.enable_overlay_checkbox, 0, 0, 4, 1)
+
+        # Text overlay settings
+        text_frame = Gtk.Frame(label="Text Overlay")
+        text_grid = Gtk.Grid()
+        text_grid.set_column_spacing(10)
+        text_grid.set_row_spacing(10)
+        text_frame.add(text_grid)
+
+        self.enable_text_overlay = Gtk.CheckButton(label="Enable Text Overlay")
+        self.enable_text_overlay.connect("toggled", self.on_text_overlay_toggled)
+        text_grid.attach(self.enable_text_overlay, 0, 0, 2, 1)
+
+        text_label = Gtk.Label(label="Text:")
+        text_grid.attach(text_label, 0, 1, 1, 1)
+
+        self.overlay_text_entry = Gtk.Entry()
+        self.overlay_text_entry.connect("changed", self.on_overlay_settings_changed)
+        text_grid.attach(self.overlay_text_entry, 1, 1, 1, 1)
+
+        font_size_label = Gtk.Label(label="Font Size:")
+        text_grid.attach(font_size_label, 0, 2, 1, 1)
+
+        self.font_size_spinbutton = Gtk.SpinButton.new_with_range(8, 72, 1)
+        self.font_size_spinbutton.set_value(24)
+        self.font_size_spinbutton.connect("value-changed", self.on_overlay_settings_changed)
+        text_grid.attach(self.font_size_spinbutton, 1, 2, 1, 1)
+
+        text_position_label = Gtk.Label(label="Position:")
+        text_grid.attach(text_position_label, 0, 3, 1, 1)
+
+        self.text_position_combo = Gtk.ComboBoxText()
+        positions = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"]
+        for pos in positions:
+            self.text_position_combo.append_text(pos)
+        self.text_position_combo.set_active(0)
+        self.text_position_combo.connect("changed", self.on_overlay_settings_changed)
+        text_grid.attach(self.text_position_combo, 1, 3, 1, 1)
+
+        overlay_grid.attach(text_frame, 0, 1, 2, 1)
+
+        # Image overlay settings
+        image_frame = Gtk.Frame(label="Image Overlay")
+        image_grid = Gtk.Grid()
+        image_grid.set_column_spacing(10)
+        image_grid.set_row_spacing(10)
+        image_frame.add(image_grid)
+
+        self.enable_image_overlay = Gtk.CheckButton(label="Enable Image Overlay")
+        self.enable_image_overlay.connect("toggled", self.on_image_overlay_toggled)
+        image_grid.attach(self.enable_image_overlay, 0, 0, 3, 1)
+
+        image_label = Gtk.Label(label="Image:")
+        image_grid.attach(image_label, 0, 1, 1, 1)
+
+        self.image_path_entry = Gtk.Entry()
+        self.image_path_entry.set_editable(False)
+        image_grid.attach(self.image_path_entry, 1, 1, 1, 1)
+
+        choose_image_button = Gtk.Button(label="Choose")
+        choose_image_button.connect("clicked", self.on_choose_image_clicked)
+        image_grid.attach(choose_image_button, 2, 1, 1, 1)
+
+        image_size_label = Gtk.Label(label="Size:")
+        image_grid.attach(image_size_label, 0, 2, 1, 1)
+
+        self.image_size_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 10, 100, 1)
+        self.image_size_scale.set_value(25)
+        self.image_size_scale.connect("value-changed", self.on_overlay_settings_changed)
+        image_grid.attach(self.image_size_scale, 1, 2, 2, 1)
+
+        image_position_label = Gtk.Label(label="Position:")
+        image_grid.attach(image_position_label, 0, 3, 1, 1)
+
+        self.image_position_combo = Gtk.ComboBoxText()
+        for pos in positions:
+            self.image_position_combo.append_text(pos)
+        self.image_position_combo.set_active(0)
+        self.image_position_combo.connect("changed", self.on_overlay_settings_changed)
+        image_grid.attach(self.image_position_combo, 1, 3, 2, 1)
+
+        overlay_grid.attach(image_frame, 2, 1, 2, 1)
+
+        preview_grid.attach(overlay_frame, 0, 3, 4, 1)
 
         return preview_grid
 
+    def on_global_overlay_toggled(self, button):
+        is_enabled = button.get_active()
+        self.enable_text_overlay.set_sensitive(is_enabled)
+        self.enable_image_overlay.set_sensitive(is_enabled)
+        self.update_overlay_settings()
 
+    def on_text_overlay_toggled(self, button):
+        is_enabled = button.get_active()
+        self.overlay_text_entry.set_sensitive(is_enabled)
+        self.font_size_spinbutton.set_sensitive(is_enabled)
+        self.text_position_combo.set_sensitive(is_enabled)
+        self.update_overlay_settings()
+
+    def on_image_overlay_toggled(self, button):
+        is_enabled = button.get_active()
+        self.image_path_entry.set_sensitive(is_enabled)
+        self.image_size_scale.set_sensitive(is_enabled)
+        self.image_position_combo.set_sensitive(is_enabled)
+        self.update_overlay_settings()
+
+    def update_overlay_settings(self):
+        global_overlay_enabled = self.enable_overlay_checkbox.get_active()
+        text_overlay_enabled = global_overlay_enabled and self.enable_text_overlay.get_active()
+        image_overlay_enabled = global_overlay_enabled and self.enable_image_overlay.get_active()
+
+        self.text_overlay_active = text_overlay_enabled
+        self.image_overlay_active = image_overlay_enabled
+
+        if text_overlay_enabled:
+            self.overlay_text = self.overlay_text_entry.get_text()
+            self.font_size = self.font_size_spinbutton.get_value_as_int()
+            self.text_position = self.text_position_combo.get_active_text()
+        else:
+            self.overlay_text = ""
+            self.font_size = 24  # Default font size
+            self.text_position = "top-left"  # Default position
+
+        if image_overlay_enabled:
+            self.image_path = self.image_path_entry.get_text()
+            self.image_size_percentage = self.image_size_scale.get_value()  # Update this line
+            self.image_position = self.image_position_combo.get_active_text()
+        else:
+            self.image_path = ""
+            self.image_size_percentage = 50  # Default size (50%)
+            self.image_position = "top-left"  # Default position
+
+        # Log the current settings for debugging
+        print(f"Text Overlay: {text_overlay_enabled}")
+        if text_overlay_enabled:
+            print(f"  Text: {self.overlay_text}")
+            print(f"  Font Size: {self.font_size}")
+            print(f"  Position: {self.text_position}")
+        
+        print(f"Image Overlay: {image_overlay_enabled}")
+        if image_overlay_enabled:
+            print(f"  Image Path: {self.image_path}")
+            print(f"  Image Size: {self.image_size_percentage}%")
+            print(f"  Position: {self.image_position}")
+
+        # Trigger a redraw of the preview
+        if hasattr(self, 'preview_area'):
+            self.preview_area.queue_draw()
+
+    def on_overlay_settings_changed(self, widget):
+        self.update_overlay_settings()
+
+    def on_choose_image_clicked(self, button):
+        dialog = Gtk.FileChooserDialog(
+            title="Please choose an image file",
+            parent=self.get_toplevel(),
+            action=Gtk.FileChooserAction.OPEN
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        filter_image = Gtk.FileFilter()
+        filter_image.set_name("Image files")
+        filter_image.add_mime_type("image/jpeg")
+        filter_image.add_mime_type("image/png")
+        dialog.add_filter(filter_image)
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            file_path = dialog.get_filename()
+            self.image_path_entry.set_text(file_path)
+            self.update_overlay_settings()
+        
+        dialog.destroy()    
+
+
+#---------------------Combined Overlay End-----------------------------------------
 
     def on_preview_monitor_changed(self, combo):
         self.selected_preview_monitor = self.monitors[combo.get_active()]
@@ -3477,6 +5899,11 @@ class ScreenRecorder(Gtk.Window):
             self.stop_recording(None)
             logging.info("Recording stopped.")
         
+        # Stop any ongoing "Start Now" recordings
+        if self.is_recording:
+            self.stop_recording(None)
+
+
         # Stop all threads
         logging.info("Stopping active threads...")
         self.preview_active = False
@@ -3583,6 +6010,21 @@ class ScreenRecorder(Gtk.Window):
             height if height % 2 == 0 else height - 1
         )
 
+
+    def check_ffmpeg_fps_mode_support(self):
+        try:
+            help_output = subprocess.check_output(["ffmpeg", "-h", "filter=fps"], universal_newlines=True)
+            fps_mode_supported = "fps_mode" in help_output
+            logging.info(f"fps_mode supported: {fps_mode_supported}")
+            return fps_mode_supported
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Error checking FFmpeg capabilities: {e}")
+            return False
+
+
+
+
+
     def start_recording(self, widget):
         if not self.is_recording:
             logging.debug("Record button clicked, starting recording...")
@@ -3599,6 +6041,7 @@ class ScreenRecorder(Gtk.Window):
 
             self.is_recording = True
             self.start_time = time.time()
+            self.recording_start_time = datetime.now()
 
             # Get recording settings
             selected_size = self.recording_size_combo.get_active_text()
@@ -3718,7 +6161,6 @@ class ScreenRecorder(Gtk.Window):
             filter_graph = "[0:v]fps=fps=30[v0];"
             input_count = 1  # Start with 1 for the main video input
 
-            # Add webcam overlay if enabled
             if self.is_webcam_overlay:
                 selected_camera = self.camera_combo.get_active_text()
                 if selected_camera:
@@ -3727,7 +6169,12 @@ class ScreenRecorder(Gtk.Window):
                         webcam_device = f"/dev/video{camera_index}"
                         screen_width, screen_height = self.get_screen_resolution()
                         webcam_width, webcam_height = self.calculate_webcam_size(screen_width, screen_height)
-                        input_args.extend(["-f", "v4l2", "-video_size", f"{webcam_width}x{webcam_height}", "-framerate", "30", "-i", webcam_device])
+                        input_args.extend([
+                            "-f", "v4l2",
+                            "-video_size", f"{webcam_width}x{webcam_height}",
+                            "-framerate", "30",
+                            "-i", webcam_device
+                        ])
                         
                         webcam_position = self.webcam_position_combo.get_active_text()
                         if webcam_position == "top-left":
@@ -3743,7 +6190,7 @@ class ScreenRecorder(Gtk.Window):
                         else:
                             overlay_position = "main_w-overlay_w-10:main_h-overlay_h-10"  # Default to bottom-right
 
-                        filter_graph += f"[{input_count}:v]fps=fps=30[webcam];"
+                        filter_graph += f"[{input_count}:v]hflip,fps=fps=30[webcam];"  # Add hflip here
                         filter_graph += f"[v0][webcam]overlay={overlay_position}[v1];"
                         input_count += 1
                     except ValueError as e:
@@ -3849,16 +6296,21 @@ class ScreenRecorder(Gtk.Window):
             # Combine all arguments into final command
             command = ["ffmpeg", "-y"] + input_args + audio_args + buffer_args + sync_args + filter_args + output_args + [self.output_filename]
 
+            # Check FFmpeg capabilities and adjust command if necessary
+            fps_mode_supported = self.check_ffmpeg_fps_mode_support()
+            if not fps_mode_supported:
+                command = [arg for arg in command if arg != "-fps_mode" and arg != "vfr"]
+                logging.info("Removed -fps_mode vfr from FFmpeg command due to lack of support")
+
             logging.info(f"FFmpeg command: {' '.join(command)}")
 
             # Set up audio monitor for visualizer
             self.setup_audio_monitor()
 
-            # Start recording process and monitoring threads
+    # Start recording process and monitoring threads
             threading.Thread(target=self.start_ffmpeg_process, args=(command,)).start()
             threading.Thread(target=self.monitor_file_size).start()
             threading.Thread(target=self.update_tray_info).start()
-            threading.Thread(target=self.update_tray_tooltip_continuously).start()
 
             # Start updating video stats
             GLib.timeout_add(1000, self.update_video_stats)
@@ -3886,6 +6338,11 @@ class ScreenRecorder(Gtk.Window):
 
             # Update UI
             GLib.idle_add(self.update_ui_for_recording_start)
+
+            # Start dynamic tooltip updates
+            if hasattr(self, 'tray_update_timeout') and self.tray_update_timeout is not None:
+                GLib.source_remove(self.tray_update_timeout)
+            self.tray_update_timeout = GLib.timeout_add(1000, self.update_tray_tooltip)
 
             # Update tray tooltip
             self.update_tray_tooltip()
@@ -4410,21 +6867,41 @@ class ScreenRecorder(Gtk.Window):
         self.static_tooltip_text = "\n".join(settings)
 
         if self.is_recording:
-            file_size_text = f"File Size: {self.convert_size(self.file_size)}"
-            elapsed_time = time.time() - self.start_time
-            elapsed_time_text = f"Elapsed Time: {self.format_time(elapsed_time)}"
-            file_name_text = f"File Name: {os.path.basename(self.output_filename) if self.output_filename else 'N/A'}"
-            recording_status_text = "Recording Info" if not self.is_paused else "Recording Paused"
-
+            current_time = time.time()
+            elapsed_time = current_time - self.start_time
+            
+            dynamic_info = ["Recording Info"]
+            
+            # Add recording start time
+            start_time_str = self.recording_start_time.strftime('%Y-%m-%d %I:%M:%S %p')
+            dynamic_info.append(f"Started: {start_time_str}")
+            
+            # Add scheduled end time if it exists
+            if self.scheduled_end_time:
+                end_time_str = self.scheduled_end_time.strftime('%Y-%m-%d %I:%M:%S %p')
+                dynamic_info.append(f"Scheduled End: {end_time_str}")
+            
+            dynamic_info.append(f"Elapsed Time: {self.format_time(int(elapsed_time))}")
+            
+            if self.scheduled_end_time:
+                remaining = int((self.scheduled_end_time - datetime.now()).total_seconds())
+                time_remaining = self.format_time(remaining) if remaining > 0 else "Overtime"
+                dynamic_info.append(f"Time Remaining: {time_remaining}")
+            
             if self.timer_active:
-                elapsed_time_since_start = time.time() - self.start_time
-                timer_remaining_seconds = max(self.timer_seconds - elapsed_time_since_start, 0)
-                timer_remaining = f"Timer Remaining: {self.format_time(timer_remaining_seconds)}"
-                dynamic_info = f"\n{recording_status_text}\n{file_name_text}\n{file_size_text}\n{elapsed_time_text}\n{timer_remaining}"
-            else:
-                dynamic_info = f"\n{recording_status_text}\n{file_name_text}\n{file_size_text}\n{elapsed_time_text}"
-
-            tooltip_text = f"{self.static_tooltip_text}\n{dynamic_info}"
+                timer_remaining = self.format_time(max(int(self.timer_seconds - elapsed_time), 0))
+                dynamic_info.append(f"Timer Remaining: {timer_remaining}")
+            
+            if self.output_filename and os.path.exists(self.output_filename):
+                file_size = self.convert_size(os.path.getsize(self.output_filename))
+                dynamic_info.append(f"File Size: {file_size}")
+                dynamic_info.append(f"File Name: {os.path.basename(self.output_filename)}")
+            
+            if self.is_paused:
+                dynamic_info.insert(0, "Recording Paused")
+            
+            dynamic_text = "\n".join(dynamic_info)
+            tooltip_text = f"{self.static_tooltip_text}\n\n{dynamic_text}"
         else:
             tooltip_text = self.static_tooltip_text
 
@@ -4436,6 +6913,23 @@ class ScreenRecorder(Gtk.Window):
                 print(f"Error setting indicator title: {e}")
 
         return True  # Keep the update loop running
+
+    def format_time(self, seconds):
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def convert_size(self, size_bytes):
+        if size_bytes == 0:
+            return "0 B"
+        size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_name[i]}"
+
+
+
 
 
 #--------------End Update Tray Tooltip-------------------------------------
@@ -4546,9 +7040,12 @@ class ScreenRecorder(Gtk.Window):
                 del self.audio_monitor
 
             # Add the recording to the recent recordings list
-            if self.output_filename:
+            if self.output_filename and os.path.exists(self.output_filename):
                 self.completed_recordings.append((self.output_filename, time.time()))
                 self.update_recent_recording_info_label()
+                logging.info(f"Added recording to completed list: {self.output_filename}")
+            else:
+                logging.warning("Output file not found or not created")
 
             # Reset timer if it was active
             self.timer_active = False
@@ -4593,7 +7090,12 @@ class ScreenRecorder(Gtk.Window):
             # Update UI elements
             GLib.idle_add(self.update_ui_for_recording_stop)
 
-            # Update tray tooltip
+            # Stop tray tooltip updates
+            if hasattr(self, 'tray_update_timeout') and self.tray_update_timeout is not None:
+                GLib.source_remove(self.tray_update_timeout)
+            self.tray_update_timeout = None
+
+            # Update tray tooltip one last time
             self.update_tray_tooltip()
 
             if scheduled:
@@ -4601,8 +7103,21 @@ class ScreenRecorder(Gtk.Window):
             else:
                 self.status_label.set_text("Recording stopped.")
 
-        logging.debug("Recording stop process completed")
+            logging.debug("Recording stop process completed")
+        else:
+            logging.warning("Attempted to stop recording, but no recording was in progress")
 
+        # Ensure all flags and states are reset
+        self.is_paused = False
+        self.is_custom_region = False
+        self.recording_region = None
+
+        # If this was a scheduled recording, update the scheduler
+        if scheduled:
+            self.update_schedule_list()
+            self.update_completed_schedule_list()
+
+        return False  # For use with GLib.idle_add
 
 
 
@@ -5618,8 +8133,8 @@ class ScreenRecorder(Gtk.Window):
 
     def show_about_dialog(self, widget):
         about_dialog = Gtk.AboutDialog()
-        about_dialog.set_program_name("Seekers StormOS Screen Recorder")
-        about_dialog.set_version("4.1_adv")
+        about_dialog.set_program_name("Seekers StormOS Screen Recorder Hybrid Edition")
+        about_dialog.set_version("4.5_hybrid")
         about_dialog.set_comments("A powerful and easy-to-use screen recording application.")
         about_dialog.set_authors(["The Seeker", "Ben StormOS Dev", "Ricki aka YughioMaster88", "Fishman aka Pescado"])
         about_dialog.set_logo_icon_name("help-about")

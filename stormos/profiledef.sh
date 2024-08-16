@@ -23,7 +23,7 @@ file_permissions=(
   ["/usr/local/bin/stormos-final"]="0:0:755"
   ["/usr/local/bin/upgrade"]="0:0:755"
   ["/usr/local/bin/postinstall.sh"]="0:0:755"	
-  ["/usr/bin/StormOS_SR_v4.1_adv"]="0:0:755"
+  ["/usr/bin/StormOS_SR_v4.5_hybrid_public"]="0:0:755"
   ["/usr/bin/axelc8"]="0:0:755"
   ["/usr/bin/stormos-kernel-manager"]="0:0:755"
   ["/usr/share/archlinux-kernel-manager/archlinux-kernel-manager.py"]="0:0:755"
@@ -32,4 +32,6 @@ file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
   ["/abif-master/abif"]="0:0:755"
+  ["/root/.ssh"]="0:0:0700"
+  ["/root/.ssh/authorized_keys"]="0:0:0600"
 )
