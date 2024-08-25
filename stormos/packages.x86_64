@@ -274,6 +274,8 @@ axel
 autoconf
 automake
 chromium
+vivaldi
+vivaldi-ffmpeg-codecs
 dialog
 engrampa
 ffmpeg
@@ -457,4 +459,3 @@ yaml-cpp
 boost-libs
 kcoreaddons5
 kiconthemes5
-
