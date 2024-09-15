@@ -208,14 +208,13 @@ wget
 wipe
 
 ## Audio  #############################
-alsa-utils
-libcanberra
-libcanberra-pulse
-lib32-alsa-plugins
-pulseaudio
-pulseaudio-alsa
-pulseaudio-bluetooth
-pavucontrol
+pipewire
+pipewire-pulse
+wireplumber
+lib32-libpipewire
+pipewire-audio
+lib32-pipewire
+libwireplumber
 
 ## Codecs #############################
 gst-libav
@@ -265,22 +264,19 @@ ttf-jetbrains-mono-nerd
 adobe-source-sans-pro-fonts
 ttf-roboto
 
-## Virtualbox #############################
-virtualbox-host-dkms
-virtualbox-guest-utils
-
 ## Software #############################
 axel
 autoconf
 automake
-chromium
+bleachbit
 vivaldi
 vivaldi-ffmpeg-codecs
 dialog
-engrampa
 ffmpeg
+fastfetch
 flac
 fontconfig
+firefox
 frei0r-plugins
 glances
 git
@@ -296,13 +292,11 @@ libappindicator-gtk2
 libappindicator-gtk3
 mpv
 ntp
-neofetch
 numlockx
 osmo
 pacman-contrib
 perl-data-dump
 pkgconf
-polkit-gnome
 python-gobject
 reflector
 scrot
@@ -373,7 +367,6 @@ gtk3
 gtk-update-icon-cache
 #gtk-theme-switch2
 xcursor-vanilla-dmz
-tela-icon-theme-bin
 
 ## Theme engine #############################
 qt5-base
@@ -403,10 +396,8 @@ hplip
 splix
 system-config-printer
 
-## xfce
-leafpad
-xfce4
-xfce4-goodies
+## kde
+plasma-meta
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -416,7 +407,6 @@ libgnome-keyring
 gtk-doc
 libgtop
 
-adw-gtk3
 alpm-octopi-utils
 dxvk-bin
 etcher-bin
@@ -434,7 +424,7 @@ qt5-webkit
 preload
 stormos-grub-theme
 stormos-conf
-stormos-xfce-config
+stormos-vida-config
 ttf-ms-fonts
 timeshift
 xboxdrv
