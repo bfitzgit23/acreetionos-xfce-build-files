@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="StormOS"
-iso_label="StormOS_$(date +%Y%m)"
+iso_name="StormOS-Vida-KDE"
+iso_label="StormOS_Vida_KDE_$(date +%Y%m)"
 iso_publisher="StormOS <https://www.storm-os.com>"
 iso_application="StormOS install medium"
 iso_version="$(date +%Y.%m.%d)"
