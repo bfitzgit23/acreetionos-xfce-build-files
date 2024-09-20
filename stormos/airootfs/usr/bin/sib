@@ -3,7 +3,6 @@
 import gi
 import subprocess
 import os
-import time
 import shutil
 import threading
 from datetime import datetime, timedelta
@@ -14,14 +13,22 @@ from gi.repository import Gtk, GLib
 class ArchIsoBuilder(Gtk.Window):
 
     REQUIRED_PACKAGES = [
-        'archiso', 'mkinitcpio-archiso', 'calamares-app'
+        'python-gobject', 'gtk3', 'archiso', 'calamares', 
+        'git'
     ]
 
-    # Use dynamic USER_HOME path instead of hardcoding any directory
     USER_HOME = os.path.expanduser("~")
-    STORMOS_DIR = os.path.join(USER_HOME, "Desktop", "stormos-build-files", "stormos", "stormos")
-    OUTPUT_DIR = os.path.join(USER_HOME, "Desktop", "StormOS-ISO")
+    STORMOS_DIR = os.path.join(USER_HOME, "Desktop/stormos-build-files/stormos")
+    OUTPUT_DIR = os.path.join(USER_HOME, "Desktop/StormOS-ISO")
     GIT_REPO = "https://github.com/bfitzgit23/stormos-build-files"
+
+    REQUIRED_ITEMS = [
+        "packages.x86_64",
+        "profiledef.sh",
+        "grub",
+        "syslinux",
+        "efiboot"
+    ]
 
     def __init__(self):
         Gtk.Window.__init__(self, title="StormOS ISO Builder")
@@ -53,67 +60,48 @@ class ArchIsoBuilder(Gtk.Window):
         self.build_button.connect("clicked", self.on_build_button_clicked)
         hbox.pack_start(self.build_button, False, False, 0)
 
-        # Ensure the OUTPUT_DIR and STORMOS_DIR exist before proceeding
-        self.ensure_directories_exist()
-
-        # Ensure the necessary packages are installed
         self.check_and_install_packages()
-
-        # Ensure Git repo is cloned first before scanning the directory
-        self.clone_or_update_git_repo()
         self.scan_stormos_dir()
         self.generate_generic_calamares_config()
 
-    def ensure_directories_exist(self):
-        """Ensure that OUTPUT_DIR and STORMOS_DIR exist, create them if necessary."""
-        self.append_text(f"Checking if necessary directories exist...\n")
-        
-        # Check and create OUTPUT_DIR if it does not exist
-        if not os.path.exists(self.OUTPUT_DIR):
-            self.append_text(f"Output directory {self.OUTPUT_DIR} does not exist. Creating...\n")
-            os.makedirs(self.OUTPUT_DIR, exist_ok=True)
-            self.append_text(f"Created output directory: {self.OUTPUT_DIR}\n")
+    def update_progress(self, fraction, message="", eta=None):
+        GLib.idle_add(self.progress_bar.set_fraction, fraction)
+        GLib.idle_add(self.progress_bar.set_text, message)
 
-        # Check and create STORMOS_DIR if it does not exist
-        if not os.path.exists(self.STORMOS_DIR):
-            self.append_text(f"StormOS directory {self.STORMOS_DIR} does not exist. Creating...\n")
-            os.makedirs(self.STORMOS_DIR, exist_ok=True)
-            self.append_text(f"Created StormOS directory: {self.STORMOS_DIR}\n")
+        if eta is not None:
+            eta_text = f" - ETA: {eta}"
+        else:
+            eta_text = ""
+
+        GLib.idle_add(self.set_title, f"StormOS ISO Builder - {int(fraction * 100)}%{eta_text}")
 
     def check_and_install_packages(self):
-        """Check if required packages are installed and install missing ones."""
-        self.append_text("Checking required packages...\n")
+        self.update_progress(0.1, "Checking required packages...")
         missing_packages = []
-
-        # Check if each required package is installed
         for package in self.REQUIRED_PACKAGES:
             if not self.is_package_installed(package):
                 missing_packages.append(package)
 
-        # Install missing packages using pkexec for privilege escalation
         if missing_packages:
-            self.append_text(f"Missing packages: {', '.join(missing_packages)}. Installing...\n")
+            self.append_text(f"Missing packages: {', '.join(missing_packages)}\n")
             self.install_missing_packages(missing_packages)
         else:
-            self.append_text("All required packages are already installed.\n")
+            self.append_text("All required packages are installed.\n")
+        self.update_progress(0.2, "Completed checking packages.")
 
     def is_package_installed(self, package_name):
-        """Check if a package is installed using pacman."""
         result = subprocess.run(['pacman', '-Qq', package_name], capture_output=True, text=True)
         return result.returncode == 0
 
     def install_missing_packages(self, packages):
-        """Install the missing packages using pacman with pkexec for sudo privileges."""
         self.append_text(f"Installing missing packages: {', '.join(packages)}\n")
-        result = subprocess.run(['pkexec', 'pacman', '-S', '--noconfirm'] + packages, capture_output=True, text=True)
+        result = subprocess.run(['sudo', 'pacman', '-S', '--noconfirm'] + packages, capture_output=True, text=True)
         if result.returncode == 0:
             self.append_text(f"Successfully installed: {', '.join(packages)}\n")
         else:
             self.append_text(f"Failed to install: {', '.join(packages)}\n")
-            if result.stdout:
-                self.append_text(result.stdout)
-            if result.stderr:
-                self.append_text(result.stderr)
+            self.append_text(result.stdout)
+            self.append_text(result.stderr)
 
     def clone_or_update_git_repo(self):
         use_existing = self.use_existing_checkbox.get_active()
@@ -122,96 +110,27 @@ class ArchIsoBuilder(Gtk.Window):
             self.append_text("Using existing git clone.\n")
             return
 
-        repo_parent_dir = os.path.dirname(self.STORMOS_DIR)
-        if os.path.exists(repo_parent_dir):
+        if os.path.exists(self.STORMOS_DIR):
             self.append_text("Existing repository found. Deleting...\n")
-            shutil.rmtree(repo_parent_dir)
+            shutil.rmtree(self.STORMOS_DIR)
 
         self.append_text(f"Cloning repository from {self.GIT_REPO}...\n")
-        try:
-            result = subprocess.run(['git', 'clone', self.GIT_REPO, repo_parent_dir], capture_output=True, text=True, check=True)
-            self.append_text("Repository cloned successfully.\n")
-            if result.stdout:
-                self.append_text(result.stdout)
-            if result.stderr:
-                self.append_text(result.stderr)
-        except subprocess.CalledProcessError as e:
-            self.append_text(f"Git clone failed: {e}\n")
-            if e.stdout:
-                self.append_text(e.stdout)
-            if e.stderr:
-                self.append_text(e.stderr)
+        subprocess.run(['git', 'clone', self.GIT_REPO, self.STORMOS_DIR], check=True)
+        self.append_text("Repository cloned successfully.\n")
 
     def scan_stormos_dir(self):
         self.append_text(f"Scanning {self.STORMOS_DIR} for necessary files and folders...\n")
-        required_files = ["packages.x86_64", "profiledef.sh", "pacman.conf"]
-        required_dirs = ["syslinux", "grub"]
+        found_items = {}
 
-        for required_file in required_files:
-            file_path = os.path.join(self.STORMOS_DIR, required_file)
-            if not os.path.exists(file_path):
-                self.append_text(f"Missing: {required_file}. Creating default...\n")
-                self.create_required_file(required_file)
-            else:
-                self.append_text(f"Found: {required_file}\n")
+        for root, dirs, files in os.walk(self.STORMOS_DIR):
+            for name in files + dirs:
+                if name in self.REQUIRED_ITEMS:
+                    found_items[name] = os.path.join(root, name)
+                    self.append_text(f"Found: {name} at {found_items[name]}\n")
 
-        for required_dir in required_dirs:
-            dir_path = os.path.join(self.STORMOS_DIR, required_dir)
-            if not os.path.exists(dir_path):
-                self.append_text(f"Missing: {required_dir} directory. Creating it...\n")
-                os.makedirs(dir_path)
-                self.create_required_file(required_dir)
-            else:
-                self.append_text(f"Found: {required_dir} directory\n")
-
-    def create_required_file(self, filename):
-        # Logic to create missing files like "packages.x86_64", "profiledef.sh", etc.
-        if filename == "packages.x86_64":
-            with open(os.path.join(self.STORMOS_DIR, "packages.x86_64"), "w") as f:
-                f.write("base\nlinux\nlinux-firmware\nsyslinux\n")
-
-        elif filename == "pacman.conf":
-            default_pacman_conf = "/etc/pacman.conf"
-            if os.path.exists(default_pacman_conf):
-                shutil.copy(default_pacman_conf, os.path.join(self.STORMOS_DIR, "pacman.conf"))
-
-        elif filename == "syslinux":
-            syslinux_dir = os.path.join(self.STORMOS_DIR, "syslinux")
-            os.makedirs(syslinux_dir, exist_ok=True)
-            with open(os.path.join(syslinux_dir, "syslinux.cfg"), "w") as f:
-                f.write(
-                    "DEFAULT linux\n"
-                    "LABEL linux\n"
-                    "    LINUX /boot/vmlinuz-linux\n"
-                    "    INITRD /boot/initramfs-linux.img\n"
-                    "    APPEND root=/dev/sda1 rw\n"
-                )
-
-        elif filename == "grub":
-            grub_dir = os.path.join(self.STORMOS_DIR, "grub")
-            os.makedirs(grub_dir, exist_ok=True)
-            with open(os.path.join(grub_dir, "grub.cfg"), "w") as f:
-                f.write(
-                    "set default=0\n"
-                    "set timeout=5\n\n"
-                    "menuentry 'Arch Linux' {\n"
-                    "    linux /boot/vmlinuz-linux root=/dev/sda1 rw\n"
-                    "    initrd /boot/initramfs-linux.img\n"
-                    "}\n"
-                )
-
-        elif filename == "profiledef.sh":
-            profiledef_path = os.path.join(self.STORMOS_DIR, "profiledef.sh")
-            with open(profiledef_path, "w") as f:
-                f.write(
-                    "#!/bin/bash\n"
-                    "iso_name=\"stormos\"\n"
-                    "iso_label=\"STORMOS_$(date +%Y%m)\"\n"
-                    "iso_version=\"$(date +%Y.%m.%d)\"\n"
-                )
-            os.chmod(profiledef_path, 0o755)
-
-        self.append_text(f"Created required file: {filename}\n")
+        for required_item in self.REQUIRED_ITEMS:
+            if required_item not in found_items:
+                self.append_text(f"Missing: {required_item}\n")
 
     def generate_generic_calamares_config(self):
         self.append_text("Generating generic Calamares configuration...\n")
@@ -246,91 +165,62 @@ modules:
 
         work_dir = os.path.join(self.OUTPUT_DIR, 'work')
         if os.path.exists(work_dir):
-            result = subprocess.run(['pkexec', 'rm', '-rf', work_dir], capture_output=True, text=True)
-            if result.returncode == 0:
-                self.append_text("Previous work directory cleaned up.\n")
-            else:
-                self.append_text("Failed to clean up previous work directory.\n")
+            subprocess.run(['sudo', 'rm', '-rf', work_dir], capture_output=True, text=True)
+            self.append_text("Previous work directory cleaned up.\n")
 
         if os.path.exists(self.OUTPUT_DIR):
             for file_name in os.listdir(self.OUTPUT_DIR):
                 if file_name.endswith('.iso'):
                     file_path = os.path.join(self.OUTPUT_DIR, file_name)
-                    result = subprocess.run(['pkexec', 'rm', '-f', file_path], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        self.append_text(f"Removed old ISO file: {file_path}\n")
-                    else:
-                        self.append_text(f"Failed to remove old ISO file: {file_path}\n")
+                    subprocess.run(['sudo', 'rm', '-f', file_path], capture_output=True, text=True)
+                    self.append_text(f"Removed old ISO file: {file_path}\n")
 
     def build_iso(self):
         try:
-            start_time = time.time()
-
             self.clean_up_previous_build()
             self.clone_or_update_git_repo()
-            self.scan_stormos_dir()
 
-            self.append_text("Starting mkarchiso build process...\n")
+            self.update_progress(0.6, "Running mkarchiso...")
 
-            # Ensure work directory exists before starting mkarchiso
-            work_dir = os.path.join(self.OUTPUT_DIR, 'work')
-            os.makedirs(work_dir, exist_ok=True)  # Create the work directory if it doesn't exist
+            os.makedirs(self.OUTPUT_DIR, exist_ok=True)
 
+            # Updated command to use the correct path
             mkarchiso_command = [
-                'pkexec', 'mkarchiso', '-v',
-                '-w', work_dir,
-                '-o', self.OUTPUT_DIR,
-                self.STORMOS_DIR
+                'sudo', 'mkarchiso', '-v', 
+                '-w', f'{self.OUTPUT_DIR}/work', 
+                '-o', self.OUTPUT_DIR, 
+                os.path.join(self.STORMOS_DIR, 'stormos')  # Updated path
             ]
-
-            process = subprocess.Popen(mkarchiso_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-            # Read the output of mkarchiso in real-time and update progress
-            for line in iter(process.stdout.readline, ''):
-                GLib.idle_add(self.append_text, line.strip())
-
-            process.wait()
-
-            end_time = time.time()
-
-            if process.returncode != 0:
-                error_output = process.stderr.read()
-                raise subprocess.CalledProcessError(process.returncode, mkarchiso_command, output=error_output)
-
-            GLib.idle_add(self.update_progress, 1.0, "Build completed.")
+            result = subprocess.run(mkarchiso_command, capture_output=True, text=True)
+            result.check_returncode()
 
             iso_files = [f for f in os.listdir(self.OUTPUT_DIR) if f.endswith('.iso')]
             if iso_files:
                 iso_path = os.path.join(self.OUTPUT_DIR, iso_files[0])
                 GLib.idle_add(self.append_text, f"ISO build completed successfully. ISO located at: {iso_path}\n")
             else:
-                GLib.idle_add(self.append_text, "ISO build completed, but no ISO file found.\n")
+                GLib.idle_add(self.append_text, "ISO build completed, but no ISO file found in the specified output directory.\n")
 
-            total_time = end_time - start_time
-            minutes, seconds = divmod(total_time, 60)
-            GLib.idle_add(self.append_text, f"Total build time: {int(minutes)} minutes and {int(seconds)} seconds.\n")
-
+            self.update_progress(1.0, "ISO build complete")
         except subprocess.CalledProcessError as e:
-            self.append_text(f"Build failed with error code {e.returncode}:\n")
-            if e.output:
-                self.append_text(f"Error Output:\n{e.output}\n")
+            GLib.idle_add(self.append_text, f"ISO build failed: {e}\n")
+            GLib.idle_add(self.append_text, e.stdout)
+            GLib.idle_add(self.append_text, e.stderr)
         except Exception as e:
-            self.append_text(f"An unexpected error occurred: {e}\n")
+            GLib.idle_add(self.append_text, f"Unexpected error: {e}\n")
+            self.update_progress(1.0, "Build failed")
 
     def append_text(self, text):
         buffer = self.output_textview.get_buffer()
-        end_iter = buffer.get_end_iter()
-        buffer.insert(end_iter, text + "\n")
-        GLib.idle_add(self.scroll_to_bottom)
+        buffer.insert_at_cursor(text)
+        adj = self.output_scrolled_window.get_vadjustment()
+        adj.set_value(adj.get_upper() - adj.get_page_size())
 
-    def scroll_to_bottom(self):
-        buffer = self.output_textview.get_buffer()
-        mark = buffer.create_mark(None, buffer.get_end_iter(), False)
-        self.output_textview.scroll_to_mark(mark, 0.05, True, 0.0, 1.0)
-
+def main():
+    win = ArchIsoBuilder()
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    Gtk.main()
 
 if __name__ == "__main__":
-    builder = ArchIsoBuilder()
-    builder.connect("destroy", Gtk.main_quit)
-    builder.show_all()
-    Gtk.main()
+    main()
