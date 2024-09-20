@@ -416,13 +416,13 @@ libgtop
 adw-gtk-theme-git
 alpm-octopi-utils
 dxvk-bin
-etcher-bin
 gconf
 localsend-bin
 lohit-fonts
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
 mkinitcpio-openswap
+mintstick-git
 oh-my-bash-git
 qt6gtk2
 qt-sudo
