@@ -269,11 +269,8 @@ ttf-roboto
 axel
 autoconf
 automake
-<<<<<<< HEAD
 firefox
-=======
 bleachbit
->>>>>>> 884a95180e21da5a5379b660475c55f5cd42719c
 vivaldi
 vivaldi-ffmpeg-codecs
 dialog
@@ -402,16 +399,11 @@ hplip
 splix
 system-config-printer
 
-<<<<<<< HEAD
 ## xfce
 xfce4
 xfce4-goodies
 alacritty
 picom
-=======
-## kde
-plasma-meta
->>>>>>> 884a95180e21da5a5379b660475c55f5cd42719c
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -421,10 +413,7 @@ libgnome-keyring
 gtk-doc
 libgtop
 
-<<<<<<< HEAD
 adw-gtk-theme-git
-=======
->>>>>>> 884a95180e21da5a5379b660475c55f5cd42719c
 alpm-octopi-utils
 dxvk-bin
 etcher-bin
@@ -443,13 +432,10 @@ python-pyqt5
 preload
 stormos-grub-theme
 stormos-conf
-<<<<<<< HEAD
 stormos-vida-xfce-desktop-configs
 tela-circle-icon-theme-dracula
 tela-circle-icon-theme-black
-=======
 stormos-vida-config
->>>>>>> 884a95180e21da5a5379b660475c55f5cd42719c
 ttf-ms-fonts
 timeshift
 xboxdrv
