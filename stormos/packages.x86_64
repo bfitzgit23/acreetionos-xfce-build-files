@@ -403,7 +403,6 @@ system-config-printer
 ## xfce
 xfce4
 xfce4-goodies
-alacritty
 picom
 
 # ###########################
