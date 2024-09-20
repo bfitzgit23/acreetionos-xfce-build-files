@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="StormOS"
-iso_label="StormOS_$(date +%Y%m)"
+iso_name="StormOS-Vida-XFCE"
+iso_label="StormOS_Vida_XFCE_$(date +%Y%m)"
 iso_publisher="StormOS <https://www.storm-os.com>"
-iso_application="StormOS install medium"
+iso_application="StormOS-Vida install medium"
 iso_version="$(date +%Y.%m.%d)"
 install_dir="arch"
 bootmodes=('bios.syslinux.mbr' 'bios.syslinux.eltorito' 'uefi-ia32.grub.esp' 'uefi-x64.grub.esp'
@@ -23,12 +23,14 @@ file_permissions=(
   ["/usr/local/bin/stormos-final"]="0:0:755"
   ["/usr/local/bin/upgrade"]="0:0:755"
   ["/usr/local/bin/postinstall.sh"]="0:0:755"	
-  ["/usr/bin/StormOS_SR_v4.5_hybrid_public"]="0:0:755"
+  ["/usr/bin/StormOS_SR_v4.6_hybrid_public"]="0:0:755"
   ["/usr/bin/axelc8"]="0:0:755"
   ["/usr/bin/stormos-kernel-manager"]="0:0:755"
   ["/usr/share/archlinux-kernel-manager/archlinux-kernel-manager.py"]="0:0:755"
   ["/usr/bin/StormOS_Reflector"]="0:0:755"
   ["/usr/bin/wgetm"]="0:0:755"
+  ["/usr/bin/pdetect"]="0:0:755"
+  ["/usr/bin/StormOS_Download_Manager"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
   ["/abif-master/abif"]="0:0:755"

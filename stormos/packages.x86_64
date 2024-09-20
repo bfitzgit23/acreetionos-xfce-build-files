@@ -159,6 +159,7 @@ opencl-clover-mesa
 opencl-rusticl-mesa
 lib32-mesa-libgl
 open-vm-tools
+virtualbox-guest-utils
 
 # Radeon
 vulkan-radeon
@@ -265,15 +266,11 @@ ttf-jetbrains-mono-nerd
 adobe-source-sans-pro-fonts
 ttf-roboto
 
-## Virtualbox #############################
-virtualbox-host-dkms
-virtualbox-guest-utils
-
 ## Software #############################
 axel
 autoconf
 automake
-chromium
+firefox
 vivaldi
 vivaldi-ffmpeg-codecs
 dialog
@@ -304,6 +301,7 @@ perl-data-dump
 pkgconf
 polkit-gnome
 python-gobject
+python-pip
 reflector
 scrot
 samba
@@ -373,7 +371,6 @@ gtk3
 gtk-update-icon-cache
 #gtk-theme-switch2
 xcursor-vanilla-dmz
-tela-icon-theme-bin
 
 ## Theme engine #############################
 qt5-base
@@ -404,9 +401,10 @@ splix
 system-config-printer
 
 ## xfce
-leafpad
 xfce4
 xfce4-goodies
+alacritty
+picom
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -416,7 +414,7 @@ libgnome-keyring
 gtk-doc
 libgtop
 
-adw-gtk3
+adw-gtk-theme-git
 alpm-octopi-utils
 dxvk-bin
 etcher-bin
@@ -431,10 +429,13 @@ qt6gtk2
 qt-sudo
 octopi
 qt5-webkit
+python-pyqt5
 preload
 stormos-grub-theme
 stormos-conf
-stormos-xfce-config
+stormos-vida-xfce-desktop-configs
+tela-circle-icon-theme-dracula
+tela-circle-icon-theme-black
 ttf-ms-fonts
 timeshift
 xboxdrv

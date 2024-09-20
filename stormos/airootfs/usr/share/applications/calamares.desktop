@@ -7,6 +7,6 @@ Comment=Install the operating system to disk
 Exec=sudo calamares
 Icon=storm os.png
 Terminal=false
-StartupNotify=true
+StartupNotify=false
 Type=Application
 Categories=Qt;System;Desktop
