@@ -216,6 +216,7 @@ lib32-libpipewire
 pipewire-audio
 lib32-pipewire
 libwireplumber
+pavucontrol
 
 ## Codecs #############################
 gst-libav
