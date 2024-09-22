@@ -203,7 +203,6 @@ mlocate
 pacman-mirrorlist
 pacutils
 pkgfile
-tlp
 upower
 vala
 wget
