@@ -161,6 +161,13 @@ opencl-rusticl-mesa
 lib32-mesa-libgl
 open-vm-tools
 virtualbox-guest-utils
+libxnvctrl
+nvidia-settings
+nvidia-dkms
+nvidia-utils
+opencl-nvidia
+lib32-nvidia-utils
+lib32-opencl-nvidia
 
 # Radeon
 vulkan-radeon

@@ -50,9 +50,16 @@ class ArchIsoBuilder(Gtk.Window):
         self.use_existing_checkbox = Gtk.CheckButton(label="Use existing git clone")
         hbox.pack_start(self.use_existing_checkbox, False, False, 0)
 
+        self.update_git_button = Gtk.Button(label="Update Git Clone")
+        self.update_git_button.connect("clicked", self.on_update_git_button_clicked)
+        hbox.pack_start(self.update_git_button, False, False, 0)
+
         self.build_button = Gtk.Button(label="Build ISO")
         self.build_button.connect("clicked", self.on_build_button_clicked)
         hbox.pack_start(self.build_button, False, False, 0)
+
+        # Initialize the output buffer
+        self.output_buffer = []
 
         # Ensure the OUTPUT_DIR and STORMOS_DIR exist before proceeding
         self.ensure_directories_exist()
@@ -60,10 +67,7 @@ class ArchIsoBuilder(Gtk.Window):
         # Ensure the necessary packages are installed
         self.check_and_install_packages()
 
-        # Ensure Git repo is cloned first before scanning the directory
-        self.clone_or_update_git_repo()
-        self.scan_stormos_dir()
-        self.generate_generic_calamares_config()
+        # Do not automatically update the Git repo at startup
 
     def ensure_directories_exist(self):
         """Ensure that OUTPUT_DIR and STORMOS_DIR exist, create them if necessary."""
@@ -116,32 +120,56 @@ class ArchIsoBuilder(Gtk.Window):
             if result.stderr:
                 self.append_text(result.stderr)
 
-    def clone_or_update_git_repo(self):
+    def clone_or_update_git_repo(self, force_update=False):
         use_existing = self.use_existing_checkbox.get_active()
 
-        if use_existing and os.path.exists(self.STORMOS_DIR):
-            self.append_text("Using existing git clone.\n")
-            return
+        # Only clone or update the repo when explicitly requested
+        if not use_existing or force_update:
+            repo_parent_dir = os.path.dirname(self.STORMOS_DIR)
+            
+            # If "Use existing" is unchecked or force_update is True, delete and re-clone the repo
+            if os.path.exists(repo_parent_dir):
+                self.append_text("Deleting existing repository to download a fresh copy...\n")
+                shutil.rmtree(repo_parent_dir)
 
-        repo_parent_dir = os.path.dirname(self.STORMOS_DIR)
-        if os.path.exists(repo_parent_dir):
-            self.append_text("Existing repository found. Deleting...\n")
-            shutil.rmtree(repo_parent_dir)
+            self.append_text(f"Cloning repository from {self.GIT_REPO}...\n")
+            try:
+                # Use Popen for real-time output
+                process = subprocess.Popen(
+                    ['git', 'clone', '--progress', self.GIT_REPO, repo_parent_dir],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
 
-        self.append_text(f"Cloning repository from {self.GIT_REPO}...\n")
-        try:
-            result = subprocess.run(['git', 'clone', self.GIT_REPO, repo_parent_dir], capture_output=True, text=True, check=True)
-            self.append_text("Repository cloned successfully.\n")
-            if result.stdout:
-                self.append_text(result.stdout)
-            if result.stderr:
-                self.append_text(result.stderr)
-        except subprocess.CalledProcessError as e:
-            self.append_text(f"Git clone failed: {e}\n")
-            if e.stdout:
-                self.append_text(e.stdout)
-            if e.stderr:
-                self.append_text(e.stderr)
+                # Stream the output from the process in real-time
+                for line in iter(process.stdout.readline, ''):
+                    GLib.idle_add(self.append_text, line.strip())
+
+                process.wait()
+
+                if process.returncode != 0:
+                    error_output = process.stdout.read()
+                    self.append_text(f"Git clone failed with error:\n{error_output}")
+                else:
+                    self.append_text("Repository cloned successfully.\n")
+
+            except subprocess.CalledProcessError as e:
+                self.append_text(f"Git clone failed: {e}\n")
+                if e.stdout:
+                    self.append_text(e.stdout)
+                if e.stderr:
+                    self.append_text(e.stderr)
+        else:
+            self.append_text("Using existing Git clone. No update needed.\n")
+
+
+    def on_update_git_button_clicked(self, widget):
+        """Handler for the 'Update Git Clone' button."""
+        self.append_text("Updating Git clone...\n")
+        update_thread = threading.Thread(target=self.clone_or_update_git_repo, kwargs={"force_update": True})
+        update_thread.start()
 
     def scan_stormos_dir(self):
         self.append_text(f"Scanning {self.STORMOS_DIR} for necessary files and folders...\n")
@@ -269,7 +297,6 @@ modules:
             start_time = time.time()
 
             self.clean_up_previous_build()
-            self.clone_or_update_git_repo()
             self.scan_stormos_dir()
 
             self.append_text("Starting mkarchiso build process...\n")
@@ -285,11 +312,25 @@ modules:
                 self.STORMOS_DIR
             ]
 
-            process = subprocess.Popen(mkarchiso_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            process = subprocess.Popen(
+                mkarchiso_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
 
-            # Read the output of mkarchiso in real-time and update progress
-            for line in iter(process.stdout.readline, ''):
-                GLib.idle_add(self.append_text, line.strip())
+            # Read stdout and stderr from mkarchiso in real-time and display in the text box
+            def read_output(pipe, tag):
+                for line in iter(pipe.readline, ''):
+                    if tag == "stderr":  # Highlight stderr messages
+                        GLib.idle_add(self.append_text, f"ERROR: {line.strip()}")
+                    else:
+                        GLib.idle_add(self.append_text, line.strip())
+                pipe.close()
+
+            # Create separate threads to handle stdout and stderr
+            threading.Thread(target=read_output, args=(process.stdout, "stdout")).start()
+            threading.Thread(target=read_output, args=(process.stderr, "stderr")).start()
 
             process.wait()
 
@@ -297,8 +338,7 @@ modules:
             end_time = time.time()
 
             if process.returncode != 0:
-                error_output = process.stderr.read()
-                raise subprocess.CalledProcessError(process.returncode, mkarchiso_command, output=error_output)
+                raise subprocess.CalledProcessError(process.returncode, mkarchiso_command)
 
             self.update_progress(1.0, "Build completed.")
 
@@ -315,24 +355,58 @@ modules:
             GLib.idle_add(self.append_text, f"Total build time: {int(minutes)} minutes and {int(seconds)} seconds.\n")
 
         except subprocess.CalledProcessError as e:
-            self.append_text(f"Build failed with error code {e.returncode}:\n")
-            if e.output:
-                self.append_text(f"Error Output:\n{e.output}\n")
+            error_message = f"Build failed with error code {e.returncode}."
+            self.append_text(f"{error_message}\n")
+            self.show_error_dialog(f"Build failed", error_message)
         except Exception as e:
             error_message = traceback.format_exc()  # Capture the full traceback
             self.append_text(f"An unexpected error occurred: {error_message}\n")
+            self.show_error_dialog("Unexpected Error", error_message)
+
+    def show_error_dialog(self, title, message):
+        """Show an error dialog to alert the user of an issue."""
+        dialog = Gtk.MessageDialog(
+            self,
+            0,
+            Gtk.MessageType.ERROR,
+            Gtk.ButtonsType.OK,
+            title
+        )
+        dialog.format_secondary_text(message)
+        dialog.run()
+        dialog.destroy()
+
+
+    def append_text(self, text):
+        """Append text to the Gtk.TextView and scroll to bottom, with throttling."""
+        self.output_buffer.append(text + "\n")
+
+        # Append the text in batches to avoid overwhelming the Gtk.TextView
+        if len(self.output_buffer) >= 10:  # Adjust the threshold as necessary
+            self.flush_output_buffer()
+
+    def flush_output_buffer(self):
+        """Flush the output buffer to the Gtk.TextView."""
+        buffer = self.output_textview.get_buffer()
+        batch_text = ''.join(self.output_buffer)
+        self.output_buffer.clear()  # Clear the buffer after flushing
+
+        # Append the batch of text to the Gtk.TextView
+        GLib.idle_add(self._safe_append, buffer, batch_text)
+
+    def _safe_append(self, buffer, text):
+        """Safely append text to the buffer and scroll down."""
+        end_iter = buffer.get_end_iter()
+        buffer.insert(end_iter, text)
+
+        # Scroll to the bottom
+        GLib.idle_add(self.scroll_to_bottom)
 
     def update_progress(self, fraction, message):
         """Update the progress bar and the window title with the current progress."""
         GLib.idle_add(self.progress_bar.set_fraction, fraction)
         GLib.idle_add(self.progress_bar.set_text, message)
         GLib.idle_add(self.set_title, f"StormOS ISO Builder - {int(fraction * 100)}%")
-
-    def append_text(self, text):
-        buffer = self.output_textview.get_buffer()
-        end_iter = buffer.get_end_iter()
-        buffer.insert(end_iter, text + "\n")
-        GLib.idle_add(self.scroll_to_bottom)
 
     def scroll_to_bottom(self):
         buffer = self.output_textview.get_buffer()
