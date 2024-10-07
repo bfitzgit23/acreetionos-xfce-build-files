@@ -421,7 +421,7 @@ libgtop
 
 adw-gtk-theme-git
 alpm-octopi-utils
-compiz-easy-patch
+#compiz-easy-patch
 dxvk-bin
 gconf
 localsend-bin
