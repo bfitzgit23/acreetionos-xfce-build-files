@@ -48,6 +48,8 @@ rm /usr/share/applications/abif.desktop
 pacman-key --init
 pacman-key --populate archlinux
 
+pacman -Syyu
+
 plymouth-set-default-theme stormos
 
 # Remove the script itself
