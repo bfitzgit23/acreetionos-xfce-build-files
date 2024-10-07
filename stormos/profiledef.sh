@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="StormOS-Vida-XFCE"
-iso_label="StormOS_Vida_XFCE_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_name="StormOS-Pescado-XFCE"
+iso_label="StormOS_Pescado_XFCE_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
 iso_publisher="StormOS <https://www.storm-os.com>"
 iso_application="StormOS-Vida install medium"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"

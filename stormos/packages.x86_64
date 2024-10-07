@@ -279,8 +279,7 @@ autoconf
 automake
 firefox
 bleachbit
-vivaldi
-vivaldi-ffmpeg-codecs
+chromium
 dialog
 engrampa
 ffmpeg
@@ -411,7 +410,6 @@ system-config-printer
 ## xfce
 xfce4
 xfce4-goodies
-picom
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -423,6 +421,7 @@ libgtop
 
 adw-gtk-theme-git
 alpm-octopi-utils
+compiz-easy-patch
 dxvk-bin
 gconf
 localsend-bin
