@@ -27,7 +27,7 @@ class ArchIsoBuilder(Gtk.Window):
     GIT_REPO = "https://github.com/bfitzgit23/stormos-build-files"
 
     def __init__(self):
-        Gtk.Window.__init__(self, title="StormOS ISO Builder")
+        Gtk.Window.__init__(self, title="StormOS ISO Builder v2")
         self.set_border_width(10)
         self.set_default_size(600, 500)
 
