@@ -10,7 +10,8 @@ import traceback  # To capture detailed error messages
 from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+gi.require_version('Vte', '2.91')
+from gi.repository import Gtk, GLib, Vte, Pango
 
 class ArchIsoBuilder(Gtk.Window):
 
@@ -25,21 +26,18 @@ class ArchIsoBuilder(Gtk.Window):
     GIT_REPO = "https://github.com/bfitzgit23/stormos-build-files"
 
     def __init__(self):
-        Gtk.Window.__init__(self, title="StormOS ISO Builder")
+        Gtk.Window.__init__(self, title="StormOS ISO Builder v2")
         self.set_border_width(10)
         self.set_default_size(600, 500)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.add(vbox)
 
-        self.output_scrolled_window = Gtk.ScrolledWindow()
-        self.output_scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        vbox.pack_start(self.output_scrolled_window, True, True, 0)
-
-        self.output_textview = Gtk.TextView()
-        self.output_textview.set_editable(False)
-        self.output_textview.set_cursor_visible(False)
-        self.output_scrolled_window.add(self.output_textview)
+        # Terminal for output using Vte
+        self.terminal = Vte.Terminal()
+        self.terminal.set_font(Pango.FontDescription('monospace 10'))
+        self.terminal.set_scroll_on_output(True)  # Automatically scroll to bottom
+        vbox.pack_start(self.terminal, True, True, 0)
 
         self.progress_bar = Gtk.ProgressBar()
         vbox.pack_start(self.progress_bar, False, False, 0)
@@ -58,36 +56,35 @@ class ArchIsoBuilder(Gtk.Window):
         self.build_button.connect("clicked", self.on_build_button_clicked)
         hbox.pack_start(self.build_button, False, False, 0)
 
-        # Initialize the output buffer
-        self.output_buffer = []
+        # Initialize the root commands list
+        self.root_commands = []
 
         # Ensure the OUTPUT_DIR and STORMOS_DIR exist before proceeding
         self.ensure_directories_exist()
 
         # Ensure the necessary packages are installed
-        self.check_and_install_packages()
-
-        # Do not automatically update the Git repo at startup
+        # Delay this to ensure the terminal is fully initialized
+        GLib.idle_add(self.check_and_install_packages)
 
     def ensure_directories_exist(self):
         """Ensure that OUTPUT_DIR and STORMOS_DIR exist, create them if necessary."""
-        self.append_text(f"Checking if necessary directories exist...\n")
+        self.append_terminal_text(f"Checking if necessary directories exist...\n")
         
         # Check and create OUTPUT_DIR if it does not exist
         if not os.path.exists(self.OUTPUT_DIR):
-            self.append_text(f"Output directory {self.OUTPUT_DIR} does not exist. Creating...\n")
+            self.append_terminal_text(f"Output directory {self.OUTPUT_DIR} does not exist. Creating...\n")
             os.makedirs(self.OUTPUT_DIR, exist_ok=True)
-            self.append_text(f"Created output directory: {self.OUTPUT_DIR}\n")
+            self.append_terminal_text(f"Created output directory: {self.OUTPUT_DIR}\n")
 
         # Check and create STORMOS_DIR if it does not exist
         if not os.path.exists(self.STORMOS_DIR):
-            self.append_text(f"StormOS directory {self.STORMOS_DIR} does not exist. Creating...\n")
+            self.append_terminal_text(f"StormOS directory {self.STORMOS_DIR} does not exist. Creating...\n")
             os.makedirs(self.STORMOS_DIR, exist_ok=True)
-            self.append_text(f"Created StormOS directory: {self.STORMOS_DIR}\n")
+            self.append_terminal_text(f"Created StormOS directory: {self.STORMOS_DIR}\n")
 
     def check_and_install_packages(self):
-        """Check if required packages are installed and install missing ones."""
-        self.append_text("Checking required packages...\n")
+        """Check if required packages are installed and collect missing ones to install later."""
+        self.append_terminal_text("Checking required packages...\n")
         missing_packages = []
 
         # Check if each required package is installed
@@ -95,12 +92,11 @@ class ArchIsoBuilder(Gtk.Window):
             if not self.is_package_installed(package):
                 missing_packages.append(package)
 
-        # Install missing packages using pkexec for privilege escalation
+        # Collect missing packages to install later
         if missing_packages:
-            self.append_text(f"Missing packages: {', '.join(missing_packages)}. Installing...\n")
             self.install_missing_packages(missing_packages)
         else:
-            self.append_text("All required packages are already installed.\n")
+            self.append_terminal_text("All required packages are already installed.\n")
 
     def is_package_installed(self, package_name):
         """Check if a package is installed using pacman."""
@@ -108,17 +104,10 @@ class ArchIsoBuilder(Gtk.Window):
         return result.returncode == 0
 
     def install_missing_packages(self, packages):
-        """Install the missing packages using pacman with pkexec for sudo privileges."""
-        self.append_text(f"Installing missing packages: {', '.join(packages)}\n")
-        result = subprocess.run(['pkexec', 'pacman', '-S', '--noconfirm'] + packages, capture_output=True, text=True)
-        if result.returncode == 0:
-            self.append_text(f"Successfully installed: {', '.join(packages)}\n")
-        else:
-            self.append_text(f"Failed to install: {', '.join(packages)}\n")
-            if result.stdout:
-                self.append_text(result.stdout)
-            if result.stderr:
-                self.append_text(result.stderr)
+        """Collect the command to install missing packages."""
+        self.append_terminal_text(f"Missing packages: {', '.join(packages)}. Will install during build.\n")
+        command = f"pacman -S --noconfirm {' '.join(packages)}"
+        self.root_commands.append(command)
 
     def clone_or_update_git_repo(self, force_update=False):
         use_existing = self.use_existing_checkbox.get_active()
@@ -129,69 +118,46 @@ class ArchIsoBuilder(Gtk.Window):
             
             # If "Use existing" is unchecked or force_update is True, delete and re-clone the repo
             if os.path.exists(repo_parent_dir):
-                self.append_text("Deleting existing repository to download a fresh copy...\n")
+                self.append_terminal_text("Deleting existing repository to download a fresh copy...\n")
                 shutil.rmtree(repo_parent_dir)
 
-            self.append_text(f"Cloning repository from {self.GIT_REPO}...\n")
+            self.append_terminal_text(f"Cloning repository from {self.GIT_REPO}...\n")
             try:
-                # Use Popen for real-time output
-                process = subprocess.Popen(
-                    ['git', 'clone', '--progress', self.GIT_REPO, repo_parent_dir],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1
-                )
-
-                # Stream the output from the process in real-time
-                for line in iter(process.stdout.readline, ''):
-                    GLib.idle_add(self.append_text, line.strip())
-
-                process.wait()
-
-                if process.returncode != 0:
-                    error_output = process.stdout.read()
-                    self.append_text(f"Git clone failed with error:\n{error_output}")
-                else:
-                    self.append_text("Repository cloned successfully.\n")
-
-            except subprocess.CalledProcessError as e:
-                self.append_text(f"Git clone failed: {e}\n")
-                if e.stdout:
-                    self.append_text(e.stdout)
-                if e.stderr:
-                    self.append_text(e.stderr)
+                command = f"git clone --progress {self.GIT_REPO} '{repo_parent_dir}'"
+                self.run_command_in_terminal(command)
+            except Exception as e:
+                self.append_terminal_text(f"Git clone failed: {e}\n")
         else:
-            self.append_text("Using existing Git clone. No update needed.\n")
+            self.append_terminal_text("Using existing Git clone. No update needed.\n")
 
 
     def on_update_git_button_clicked(self, widget):
         """Handler for the 'Update Git Clone' button."""
-        self.append_text("Updating Git clone...\n")
+        self.append_terminal_text("Updating Git clone...\n")
         update_thread = threading.Thread(target=self.clone_or_update_git_repo, kwargs={"force_update": True})
         update_thread.start()
 
     def scan_stormos_dir(self):
-        self.append_text(f"Scanning {self.STORMOS_DIR} for necessary files and folders...\n")
+        self.append_terminal_text(f"Scanning {self.STORMOS_DIR} for necessary files and folders...\n")
         required_files = ["packages.x86_64", "profiledef.sh", "pacman.conf"]
         required_dirs = ["syslinux", "grub"]
 
         for required_file in required_files:
             file_path = os.path.join(self.STORMOS_DIR, required_file)
             if not os.path.exists(file_path):
-                self.append_text(f"Missing: {required_file}. Creating default...\n")
+                self.append_terminal_text(f"Missing: {required_file}. Creating default...\n")
                 self.create_required_file(required_file)
             else:
-                self.append_text(f"Found: {required_file}\n")
+                self.append_terminal_text(f"Found: {required_file}\n")
 
         for required_dir in required_dirs:
             dir_path = os.path.join(self.STORMOS_DIR, required_dir)
             if not os.path.exists(dir_path):
-                self.append_text(f"Missing: {required_dir} directory. Creating it...\n")
+                self.append_terminal_text(f"Missing: {required_dir} directory. Creating it...\n")
                 os.makedirs(dir_path)
                 self.create_required_file(required_dir)
             else:
-                self.append_text(f"Found: {required_dir} directory\n")
+                self.append_terminal_text(f"Found: {required_dir} directory\n")
 
     def create_required_file(self, filename):
         # Logic to create missing files like "packages.x86_64", "profiledef.sh", etc.
@@ -240,10 +206,10 @@ class ArchIsoBuilder(Gtk.Window):
                 )
             os.chmod(profiledef_path, 0o755)
 
-        self.append_text(f"Created required file: {filename}\n")
+        self.append_terminal_text(f"Created required file: {filename}\n")
 
     def generate_generic_calamares_config(self):
-        self.append_text("Generating generic Calamares configuration...\n")
+        self.append_terminal_text("Generating generic Calamares configuration...\n")
         
         generic_config = """
 ---
@@ -263,105 +229,88 @@ modules:
         with open(os.path.join(calamares_dir, 'settings.conf'), 'w') as f:
             f.write(generic_config)
 
-        self.append_text("Generic Calamares configuration generated successfully.\n")
+        self.append_terminal_text("Generic Calamares configuration generated successfully.\n")
 
     def on_build_button_clicked(self, widget):
-        self.append_text("Starting ISO build...\n")
+        self.append_terminal_text("Starting ISO build...\n")
         build_thread = threading.Thread(target=self.build_iso)
         build_thread.start()
 
     def clean_up_previous_build(self):
-        self.append_text("Cleaning up previous build files...\n")
+        self.append_terminal_text("Cleaning up previous build files...\n")
 
         work_dir = os.path.join(self.OUTPUT_DIR, 'work')
         if os.path.exists(work_dir):
-            result = subprocess.run(['pkexec', 'rm', '-rf', work_dir], capture_output=True, text=True)
-            if result.returncode == 0:
-                self.append_text("Previous work directory cleaned up.\n")
-            else:
-                self.append_text("Failed to clean up previous work directory.\n")
+            command = f"rm -rf '{work_dir}'"
+            self.root_commands.append(command)
+            self.append_terminal_text(f"Scheduled removal of work directory: {work_dir}\n")
 
         if os.path.exists(self.OUTPUT_DIR):
             for file_name in os.listdir(self.OUTPUT_DIR):
                 if file_name.endswith('.iso'):
                     file_path = os.path.join(self.OUTPUT_DIR, file_name)
-                    result = subprocess.run(['pkexec', 'rm', '-f', file_path], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        self.append_text(f"Removed old ISO file: {file_path}\n")
-                    else:
-                        self.append_text(f"Failed to remove old ISO file: {file_path}\n")
+                    command = f"rm -f '{file_path}'"
+                    self.root_commands.append(command)
+                    self.append_terminal_text(f"Scheduled removal of old ISO file: {file_path}\n")
 
     def build_iso(self):
         try:
             # Start the timer
-            start_time = time.time()
+            self.start_time = time.time()
 
             self.clean_up_previous_build()
             self.scan_stormos_dir()
 
-            self.append_text("Starting mkarchiso build process...\n")
+            self.append_terminal_text("Starting mkarchiso build process...\n")
 
             # Ensure work directory exists before starting mkarchiso
             work_dir = os.path.join(self.OUTPUT_DIR, 'work')
             os.makedirs(work_dir, exist_ok=True)  # Create the work directory if it doesn't exist
 
-            mkarchiso_command = [
-                'pkexec', 'mkarchiso', '-v',
-                '-w', work_dir,
-                '-o', self.OUTPUT_DIR,
-                self.STORMOS_DIR
-            ]
+            mkarchiso_command = f"mkarchiso -v -w '{work_dir}' -o '{self.OUTPUT_DIR}' '{self.STORMOS_DIR}'"
+            self.root_commands.append(mkarchiso_command)
 
-            process = subprocess.Popen(
-                mkarchiso_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
+            # Now write all root commands to a script
+            script_path = os.path.join(self.USER_HOME, 'stormos_build.sh')
+            with open(script_path, 'w') as script_file:
+                script_file.write('#!/bin/bash\n')
+                for cmd in self.root_commands:
+                    script_file.write(f"{cmd}\n")
+            os.chmod(script_path, 0o755)
 
-            # Read stdout and stderr from mkarchiso in real-time and display in the text box
-            def read_output(pipe, tag):
-                for line in iter(pipe.readline, ''):
-                    if tag == "stderr":  # Highlight stderr messages
-                        GLib.idle_add(self.append_text, f"ERROR: {line.strip()}")
-                    else:
-                        GLib.idle_add(self.append_text, line.strip())
-                pipe.close()
+            # Now run pkexec bash script.sh in the terminal
+            command = f"pkexec bash '{script_path}'"
+            self.run_command_in_terminal(command)
 
-            # Create separate threads to handle stdout and stderr
-            threading.Thread(target=read_output, args=(process.stdout, "stdout")).start()
-            threading.Thread(target=read_output, args=(process.stderr, "stderr")).start()
+            # Clear root_commands for next time
+            self.root_commands.clear()
 
-            process.wait()
+            # Connect to terminal's "child-exited" signal to detect when the process is complete
+            self.terminal.connect("child-exited", self.on_build_completed)
 
-            # End the timer
-            end_time = time.time()
-
-            if process.returncode != 0:
-                raise subprocess.CalledProcessError(process.returncode, mkarchiso_command)
-
-            self.update_progress(1.0, "Build completed.")
-
-            iso_files = [f for f in os.listdir(self.OUTPUT_DIR) if f.endswith('.iso')]
-            if iso_files:
-                iso_path = os.path.join(self.OUTPUT_DIR, iso_files[0])
-                GLib.idle_add(self.append_text, f"ISO build completed successfully. ISO located at: {iso_path}\n")
-            else:
-                GLib.idle_add(self.append_text, "ISO build completed, but no ISO file found.\n")
-
-            # Calculate and display the total build time
-            total_time = end_time - start_time
-            minutes, seconds = divmod(total_time, 60)
-            GLib.idle_add(self.append_text, f"Total build time: {int(minutes)} minutes and {int(seconds)} seconds.\n")
-
-        except subprocess.CalledProcessError as e:
-            error_message = f"Build failed with error code {e.returncode}."
-            self.append_text(f"{error_message}\n")
-            self.show_error_dialog(f"Build failed", error_message)
         except Exception as e:
-            error_message = traceback.format_exc()  # Capture the full traceback
-            self.append_text(f"An unexpected error occurred: {error_message}\n")
+            error_message = traceback.format_exc()
+            self.append_terminal_text(f"An unexpected error occurred: {error_message}\n")
             self.show_error_dialog("Unexpected Error", error_message)
+
+    def on_build_completed(self, terminal, status):
+        """Called when the build process in the terminal has completed."""
+        self.append_terminal_text("Build process completed.\n")
+
+        # End the timer
+        end_time = time.time()
+
+        iso_files = [f for f in os.listdir(self.OUTPUT_DIR) if f.endswith('.iso')]
+        if iso_files:
+            iso_path = os.path.join(self.OUTPUT_DIR, iso_files[0])
+            GLib.idle_add(self.append_terminal_text, f"ISO build completed successfully. ISO located at: {iso_path}\n")
+        else:
+            GLib.idle_add(self.append_terminal_text, "ISO build completed, but no ISO file found.\n")
+
+        # Calculate and display the total build time
+        total_time = end_time - self.start_time
+        minutes, seconds = divmod(total_time, 60)
+        GLib.idle_add(self.append_terminal_text, f"Total build time: {int(minutes)} minutes and {int(seconds)} seconds.\n")
 
     def show_error_dialog(self, title, message):
         """Show an error dialog to alert the user of an issue."""
@@ -376,43 +325,26 @@ modules:
         dialog.run()
         dialog.destroy()
 
+    def append_terminal_text(self, text):
+        """Append text to the Vte.Terminal widget."""
+        self.terminal.feed(text.encode('utf-8'))
+        # No need to scroll manually; set_scroll_on_output handles it
 
-    def append_text(self, text):
-        """Append text to the Gtk.TextView and scroll to bottom, with throttling."""
-        self.output_buffer.append(text + "\n")
-
-        # Append the text in batches to avoid overwhelming the Gtk.TextView
-        if len(self.output_buffer) >= 10:  # Adjust the threshold as necessary
-            self.flush_output_buffer()
-
-    def flush_output_buffer(self):
-        """Flush the output buffer to the Gtk.TextView."""
-        buffer = self.output_textview.get_buffer()
-        batch_text = ''.join(self.output_buffer)
-        self.output_buffer.clear()  # Clear the buffer after flushing
-
-        # Append the batch of text to the Gtk.TextView
-        GLib.idle_add(self._safe_append, buffer, batch_text)
-
-    def _safe_append(self, buffer, text):
-        """Safely append text to the buffer and scroll down."""
-        end_iter = buffer.get_end_iter()
-        buffer.insert(end_iter, text)
-
-        # Scroll to the bottom
-        GLib.idle_add(self.scroll_to_bottom)
-
-    def update_progress(self, fraction, message):
-        """Update the progress bar and the window title with the current progress."""
-        GLib.idle_add(self.progress_bar.set_fraction, fraction)
-        GLib.idle_add(self.progress_bar.set_text, message)
-        GLib.idle_add(self.set_title, f"StormOS ISO Builder - {int(fraction * 100)}%")
-
-    def scroll_to_bottom(self):
-        buffer = self.output_textview.get_buffer()
-        mark = buffer.create_mark(None, buffer.get_end_iter(), False)
-        self.output_textview.scroll_to_mark(mark, 0.05, True, 0.0, 1.0)
-
+    def run_command_in_terminal(self, command):
+        """Run a command in the terminal."""
+        self.terminal.reset(True, True)
+        self.terminal.spawn_async(
+            Vte.PtyFlags.DEFAULT,
+            os.environ['HOME'],
+            ["/bin/bash", "-c", command],
+            [],
+            0,  # Use 0 instead of GLib.SpawnFlags.DO_NOT_REAP_CHILD
+            None,
+            None,
+            -1,
+            None,
+            None,
+        )
 
 if __name__ == "__main__":
     builder = ArchIsoBuilder()
