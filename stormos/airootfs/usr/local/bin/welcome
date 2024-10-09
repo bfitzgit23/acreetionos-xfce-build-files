@@ -60,7 +60,7 @@ class MainWindow(Gtk.Window):
         hbox.pack_end(button_exit, True, True, 0)
 
     def on_button1_clicked(self, button):
-        subprocess.call(["sudo", "-E", "/usr/bin/calamares"])
+        subprocess.call(["sudo", "-E", "/usr/bin/calamares2.sh"])
 
     def on_button2_clicked(self, button):
         subprocess.call(["xdg-open", "https://stormos-linux.com"])
