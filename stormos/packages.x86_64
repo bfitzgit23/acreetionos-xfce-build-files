@@ -12,7 +12,7 @@ bison
 bind-tools
 brltty
 broadcom-wl-dkms
-btrfs-progs
+#btrfs-progs
 crda
 darkhttpd
 ddrescue
@@ -104,7 +104,7 @@ wipe
 wpa_supplicant
 wvdial
 wmctrl
-xfsprogs
+#xfsprogs
 xrectsel
 xl2tpd
 yad
