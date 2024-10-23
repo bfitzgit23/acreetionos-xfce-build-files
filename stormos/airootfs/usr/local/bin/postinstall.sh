@@ -48,7 +48,7 @@ rm /usr/share/applications/abif.desktop
 pacman-key --init
 pacman-key --populate archlinux
 
-pacman -Syyu
+pacman -Syyu --noconfirm
 
 plymouth-set-default-theme stormos
 
