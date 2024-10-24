@@ -223,6 +223,9 @@ lib32-libpipewire
 pipewire-audio
 lib32-pipewire
 libwireplumber
+gst-plugin-pipewire
+pipewire-jack
+pipewire-alsa
 pavucontrol
 
 ## Codecs #############################
