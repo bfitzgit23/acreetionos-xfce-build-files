@@ -196,7 +196,7 @@ whois
 
 ## Lightdm Login Manager
 lightdm
-lightdm-gtk-greeter
+lightdm-slick-greeter
 
 ## Common #############################
 bash-completion
