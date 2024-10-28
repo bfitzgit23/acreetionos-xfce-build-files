@@ -424,12 +424,12 @@ gtk-doc
 libgtop
 
 adw-gtk-theme-git
-alpm-octopi-utils
 #compiz-easy-patch
 dxvk-bin
 gconf
 localsend-bin
 lohit-fonts
+libpamac-full
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
 mkinitcpio-openswap
@@ -437,13 +437,16 @@ mintstick-git
 oh-my-bash-git
 qt6gtk2
 qt-sudo
-octopi
 qt5-webkit
 python-pyqt5
 preload
+pamac-all
+pamac-cli
 stormos-grub-theme
 stormos-conf
 stormos-vida-xfce-desktop-configs
+snapd
+snapd-glib
 tela-circle-icon-theme-dracula
 tela-circle-icon-theme-black
 ttf-ms-fonts
