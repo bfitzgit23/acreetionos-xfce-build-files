@@ -280,7 +280,6 @@ ttf-roboto
 axel
 autoconf
 automake
-firefox
 bleachbit
 chromium
 dialog
@@ -289,8 +288,6 @@ ffmpeg
 fastfetch
 flac
 fontconfig
-firefox
-frei0r-plugins
 glances
 git
 #gnome-keyring
@@ -413,7 +410,13 @@ system-config-printer
 
 ## xfce
 xfce4
-xfce4-goodies
+xfce4-whiskermenu-plugin
+xfce4-weather-plugin
+thunar-archive-plugin
+thunar-media-tags-plugin
+xfce4-pulseaudio-plugin
+xfce4-power-manager
+thunar-shares-plugin
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
