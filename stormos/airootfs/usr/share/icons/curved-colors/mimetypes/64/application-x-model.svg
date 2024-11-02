@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64"
+   height="64"
+   version="1.1"
+   viewBox="0 0 16.933 16.933"
+   id="svg394"
+   sodipodi:docname="application-x-model.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview396"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="3.6875"
+     inkscape:cx="32"
+     inkscape:cy="32.135593"
+     inkscape:window-width="1432"
+     inkscape:window-height="844"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg394" />
+  <defs
+     id="defs374">
+    <filter
+       id="a"
+       x="-0.039000663"
+       y="-0.033428086"
+       width="1.0780013"
+       height="1.0668562"
+       color-interpolation-filters="sRGB">
+      <feGaussianBlur
+         stdDeviation="0.20637525"
+         id="feGaussianBlur371" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Diffuse Light"
+       id="filter774"
+       x="-0.061538462"
+       y="-0.059853642"
+       width="1.1230769"
+       height="1.1197073">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="1"
+         result="blur"
+         id="feGaussianBlur764" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="rgb(255,255,255)"
+         result="diffuse"
+         id="feDiffuseLighting768">
+        <feDistantLight
+           elevation="8"
+           azimuth="235"
+           id="feDistantLight766" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite770" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="1"
+         operator="arithmetic"
+         k3="1"
+         result="composite2"
+         id="feComposite772" />
+    </filter>
+  </defs>
+  <g
+     transform="matrix(0.1381618,0,0,0.12836053,-12.762902,-11.334014)"
+     enable-background="new"
+     fill="none"
+     stroke="#ffffff"
+     stroke-width="8"
+     id="g390"
+     style="fill:#ff4500;filter:url(#filter774)">
+    <path
+       d="m 100,124 52,-28 52,28 v 60 l -52,28 -52,-28 z"
+       id="path384"
+       style="fill:#ff4500" />
+    <path
+       d="m 204,124 -52,28 -52,-28"
+       id="path386"
+       style="fill:#ff4500" />
+    <path
+       d="m 152,148 v 64"
+       id="path388"
+       style="fill:#ff4500" />
+  </g>
+</svg>
