@@ -411,6 +411,7 @@ system-config-printer
 
 ## xfce
 xfce4
+xfce4-docklike-plugin
 xfce4-whiskermenu-plugin
 xfce4-weather-plugin
 thunar-archive-plugin
