@@ -420,6 +420,11 @@ xfce4-pulseaudio-plugin
 xfce4-power-manager
 thunar-shares-plugin
 
+##
+kwin
+systemsettings
+kde-gtk-config
+
 # ###########################
 # AUR APPS - DO NOT REORDER #
 # ###########################
