@@ -168,6 +168,7 @@ nvidia-utils
 opencl-nvidia
 lib32-nvidia-utils
 lib32-opencl-nvidia
+nvidia-prime
 
 # Radeon
 vulkan-radeon
