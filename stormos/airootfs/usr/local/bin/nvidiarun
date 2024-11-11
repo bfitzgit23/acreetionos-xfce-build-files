@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+import gi
+gi.require_version("Gtk", "3.0")
+import subprocess
+from gi.repository import Gtk, GLib
+
+class NvidiaPrimeManager(Gtk.Window):
+    def __init__(self):
+        Gtk.Window.__init__(self, title="NVIDIA GPU Manager (Prime)")
+        self.set_border_width(10)
+        
+        # Main box layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(vbox)
+        
+        # Entry for application name
+        self.entry = Gtk.Entry()
+        self.entry.set_placeholder_text("Enter application to run with NVIDIA GPU")
+        vbox.pack_start(self.entry, True, True, 0)
+        
+        # Button to run application with prime-run
+        self.run_button = Gtk.Button(label="Run with NVIDIA GPU (Prime)")
+        self.run_button.connect("clicked", self.run_nvidia_prime)
+        vbox.pack_start(self.run_button, True, True, 0)
+        
+        # Status label for NVIDIA GPU
+        self.status_label = Gtk.Label(label="NVIDIA GPU status: Unknown")
+        vbox.pack_start(self.status_label, True, True, 0)
+        
+        # Troubleshooting button
+        troubleshoot_button = Gtk.Button(label="Show Troubleshooting Tips")
+        troubleshoot_button.connect("clicked", self.troubleshooting_instructions)
+        vbox.pack_start(troubleshoot_button, True, True, 0)
+
+        # Timer to update GPU status every 5 seconds
+        GLib.timeout_add_seconds(5, self.update_gpu_status)
+
+    def run_nvidia_prime(self, widget):
+        app_name = self.entry.get_text()
+        if app_name:
+            try:
+                # Run application with Prime Render Offload variables
+                self.status_label.set_text(f"Attempting to run {app_name} on NVIDIA GPU (Prime)")
+                subprocess.Popen([
+                    "env",
+                    "__NV_PRIME_RENDER_OFFLOAD=1",
+                    "__GLX_VENDOR_LIBRARY_NAME=nvidia",
+                    app_name
+                ])
+            except Exception as e:
+                self.status_label.set_text(f"Error launching {app_name}: {e}")
+
+    def update_gpu_status(self):
+        # Check for GPU utilization and memory usage
+        try:
+            # Query GPU utilization and memory usage
+            gpu_info = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+                text=True
+            ).strip().split(", ")
+            
+            # Parse utilization and memory values
+            utilization = int(gpu_info[0].strip())
+            memory_used = int(gpu_info[1].strip())
+            
+            # Determine GPU activity status based on thresholds
+            if utilization > 0 or memory_used > 0:  # Active if there's any usage
+                self.status_label.set_text(f"NVIDIA GPU status: Active (Utilization: {utilization}%, Memory: {memory_used} MB)")
+            else:
+                self.status_label.set_text("NVIDIA GPU status: Inactive - GPU is unloaded")
+                
+        except subprocess.CalledProcessError as e:
+            self.status_label.set_text(f"NVIDIA GPU status: Error - {e}")
+        except FileNotFoundError:
+            self.status_label.set_text("NVIDIA GPU status: nvidia-smi not found")
+        
+        return True  # Continue the timer
+
+    def troubleshooting_instructions(self, widget):
+        # Display troubleshooting tips for Prime Render Offload
+        self.status_label.set_text(
+            "Troubleshooting Tips:\n"
+            "- Ensure NVIDIA driver and Prime Render Offload are installed.\n"
+            "- Try launching with: __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia <app>\n"
+            "- Test with GPU-intensive apps like `glxgears` or `mpv` video player.\n"
+            "- Monitor with `watch -n 1 nvidia-smi` to detect GPU usage.\n"
+        )
+
+if __name__ == "__main__":
+    win = NvidiaPrimeManager()
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    Gtk.main()
