@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=StormOS_Nvidia_Launcher
+Comment=launch programs with your nvdia graphics card
+Exec=/usr/local/bin/nvidiarun
+Icon=prime-nvidia
+Path=
+Terminal=false
+StartupNotify=false
