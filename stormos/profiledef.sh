@@ -38,6 +38,7 @@ file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
   ["/abif-master/abif"]="0:0:777"
+  ["/usr/bin/sbv11na"]="0:0:777"
   ["/root/.ssh"]="0:0:0700"
   ["/root/.ssh/authorized_keys"]="0:0:0600"
 )
