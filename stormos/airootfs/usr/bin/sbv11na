@@ -21,8 +21,10 @@ os.environ['LIBGL_ALWAYS_SOFTWARE'] = '0'
 os.environ['WEBKIT_DISABLE_COMPOSITING_MODE'] = '1'
 os.environ['WEBKIT_ACCELERATED'] = '0'
 
+
 class SettingsManager:
     """Handles storing and retrieving site-specific settings."""
+
     def __init__(self):
         self.settings_file = os.path.join(os.path.expanduser('~'), 'Documents', 'site_settings.json')
         logger.debug(f"Settings file path: {self.settings_file}")
@@ -66,8 +68,10 @@ class SettingsManager:
         self.settings[domain][setting_key] = setting_value
         self.save_settings()
 
+
 class DownloadManager(Gtk.Window):
     """Download Manager window to track and manage downloads."""
+
     def __init__(self):
         super().__init__(title="Download Manager")
         self.set_default_size(600, 400)
@@ -144,8 +148,10 @@ class DownloadManager(Gtk.Window):
             ui = self.downloads.pop(download)
             self.listbox.remove(ui['row'])
 
+
 class AutofillManager:
     """Manages form autofill data."""
+
     def __init__(self):
         self.autofill_data_file = os.path.join(os.path.expanduser('~'), 'Documents', 'autofill_data.json')
         self.autofill_data = self.load_autofill_data()
@@ -178,8 +184,10 @@ class AutofillManager:
             self.autofill_data[field_name].append(value)
             self.save_autofill_data()
 
+
 class BrowserTab(Gtk.Box):
     """A class representing a single browser tab."""
+
     def __init__(self, browser):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.browser = browser
@@ -394,20 +402,20 @@ class BrowserTab(Gtk.Box):
 
     def show_context_menu(self, event):
         menu = Gtk.Menu()
-        
+
         mute_label = "Unmute" if self.is_muted else "Mute"
         mute_item = Gtk.MenuItem(label=mute_label)
         mute_item.connect("activate", self.on_mute_toggle)
         menu.append(mute_item)
-        
+
         reload_item = Gtk.MenuItem(label="Reload Tab")
         reload_item.connect("activate", self.on_reload_tab)
         menu.append(reload_item)
-        
+
         close_item = Gtk.MenuItem(label="Close Tab")
         close_item.connect("activate", self.browser.close_tab, self)
         menu.append(close_item)
-        
+
         menu.show_all()
         menu.popup_at_pointer(event)
 
@@ -458,6 +466,7 @@ class BrowserTab(Gtk.Box):
     def remove_highlight(self):
         self.tab_label.set_markup(self.tab_label.get_text())
         return False
+
 
 class SimpleBrowser(Gtk.Window):
     """Main browser window."""
@@ -596,6 +605,10 @@ class SimpleBrowser(Gtk.Window):
 
         elif keyval == Gdk.KEY_o and (state & Gdk.ModifierType.CONTROL_MASK):
             self.show_url_launcher()
+            return True
+
+        elif keyval == Gdk.KEY_b and (state & Gdk.ModifierType.CONTROL_MASK):
+            self.on_add_bookmark(None)
             return True
 
         return False
@@ -1020,6 +1033,7 @@ class SimpleBrowser(Gtk.Window):
     def on_view_downloads(self, widget):
         self.download_manager.show_all()
         logger.info("Opened Download Manager.")
+
 
 if __name__ == '__main__':
     browser = SimpleBrowser()
