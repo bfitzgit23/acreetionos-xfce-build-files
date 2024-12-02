@@ -200,6 +200,8 @@ class BrowserTab(Gtk.Box):
         self.user_content_manager.connect("script-message-received::autofill", self.on_script_message_received_autofill)
 
         self.webview = WebKit2.WebView.new_with_user_content_manager(self.user_content_manager)
+        self.webview.connect("context-menu", self.on_context_menu)
+        self.webview.connect("decide-policy", self.on_decide_policy)
 
         self.current_uri = None
         self.is_muted = False
@@ -208,7 +210,7 @@ class BrowserTab(Gtk.Box):
         settings.set_property("enable-accelerated-2d-canvas", True)
         settings.set_property("enable-webgl", True)
         settings.set_property("enable-media-stream", False)
-        settings.set_property("enable-javascript", True)  # Ensure JavaScript is enabled
+        settings.set_property("enable-javascript", True)
         logger.info("WebKit settings optimized for performance.")
 
         self.webview.connect("notify::title", self.on_title_changed)
@@ -228,7 +230,16 @@ class BrowserTab(Gtk.Box):
         self.tab_label.set_xalign(0)
         self.tab_label_box.pack_start(self.tab_label, True, True, 0)
 
-        # Add `+` button to the tab for opening new tabs directly
+        self.audio_button_image = Gtk.Image.new_from_icon_name("audio-volume-muted", Gtk.IconSize.BUTTON)
+        self.audio_button = Gtk.Button()
+        self.audio_button.set_image(self.audio_button_image)
+        self.audio_button.set_tooltip_text("Mute/Unmute")
+        self.audio_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.audio_button.set_focus_on_click(False)
+        self.audio_button.connect("clicked", self.on_mute_toggle)
+        self.audio_button.hide()
+        self.tab_label_box.pack_start(self.audio_button, False, False, 0)
+
         self.new_tab_button = Gtk.Button.new_from_icon_name("list-add", Gtk.IconSize.BUTTON)
         self.new_tab_button.set_tooltip_text("New Tab")
         self.new_tab_button.set_relief(Gtk.ReliefStyle.NONE)
@@ -340,30 +351,36 @@ class BrowserTab(Gtk.Box):
             logger.error(f"Failed to process autofill message: {e}")
 
     def handle_media_play(self):
-        if self.is_muted:
-            logger.info("Tab is manually muted. Muting media using JavaScript.")
-            self.mute_audio()
-        else:
-            logger.info("Play event detected. Unmuting media using JavaScript.")
-            self.unmute_audio()
+        self.audio_button.show()
+        self.update_audio_icon()
+
+    def handle_media_pause(self):
+        self.audio_button.hide()
+
+    def update_audio_icon(self):
+        icon_name = "audio-volume-muted" if self.is_muted else "audio-volume-high"
+        self.audio_button_image.set_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
 
     def mute_audio(self):
-        mute_script = """
-        var audios = document.querySelectorAll('audio, video');
-        audios.forEach(function(audio) {
-            audio.muted = true;
-        });
-        """
+        mute_script = self.construct_audio_toggle_script(True)
         self.webview.run_javascript(mute_script, None, None, self.on_script_run)
+        self.is_muted = True
+        self.update_audio_icon()
 
     def unmute_audio(self):
-        unmute_script = """
-        var audios = document.querySelectorAll('audio, video');
-        audios.forEach(function(audio) {
-            audio.muted = false;
-        });
-        """
+        unmute_script = self.construct_audio_toggle_script(False)
         self.webview.run_javascript(unmute_script, None, None, self.on_script_run)
+        self.is_muted = False
+        self.update_audio_icon()
+
+    def construct_audio_toggle_script(self, mute):
+        mute_js = 'true' if mute else 'false'
+        return f"""
+        var mediaElements = document.querySelectorAll('audio, video');
+        mediaElements.forEach(function(media) {{
+            media.muted = {mute_js};
+        }});
+        """
 
     def on_script_run(self, web_view, result, *args):
         try:
@@ -391,8 +408,10 @@ class BrowserTab(Gtk.Box):
         self.apply_site_settings(self.current_uri)
 
     def on_mute_toggle(self, widget):
-        self.is_muted = not self.is_muted
-        self.mute_audio() if self.is_muted else self.unmute_audio()
+        if self.is_muted:
+            self.unmute_audio()
+        else:
+            self.mute_audio()
         logger.info(f"Tab {'muted' if self.is_muted else 'unmuted'}.")
         self.save_site_settings()
 
@@ -422,6 +441,36 @@ class BrowserTab(Gtk.Box):
     def on_reload_tab(self, widget):
         self.webview.reload()
         logger.info("Tab reloaded.")
+
+    def on_context_menu(self, web_view, context_menu, event, hit_test_result):
+        link_uri = hit_test_result.get_link_uri()
+
+        if link_uri:
+            open_link_item = Gtk.MenuItem(label="Open Link in New Tab")
+            open_link_item.connect("activate", self.open_link_in_new_tab, link_uri)
+            context_menu.prepend(open_link_item)
+            logger.debug(f"Context menu: Add 'Open Link in New Tab' for {link_uri}")
+
+        context_menu.show_all()
+        return False
+
+    def open_link_in_new_tab(self, menu_item, link_uri):
+        new_tab = BrowserTab(self.browser)
+        new_tab.webview.load_uri(link_uri)
+        self.browser.notebook.set_current_page(self.browser.notebook.page_num(new_tab))
+        logger.info(f"Opened link in new tab: {link_uri}")
+
+    def on_decide_policy(self, web_view, decision, decision_type):
+        if decision_type == WebKit2.PolicyDecisionType.NAVIGATION_ACTION:
+            navigation_action = decision.get_navigation_action()
+            new_window_action = navigation_action.get_navigation_type() == WebKit2.NavigationType.LINK_CLICKED
+            if new_window_action and navigation_action.get_target_frame() is None:
+                uri = navigation_action.get_request().get_uri()
+                self.open_link_in_new_tab(None, uri)
+                decision.ignore()
+                logger.info(f"Redirecting new window request to new tab for URI: {uri}")
+                return True
+        return False
 
     def on_title_changed(self, webview, param):
         title = webview.get_title() or "New Tab"
@@ -519,7 +568,6 @@ class SimpleBrowser(Gtk.Window):
 
         self.add_bookmark_buttons(header_bar)
 
-        # Create the toggle button and its icon
         self.switch_tabs_icon = Gtk.Image.new_from_icon_name("go-down-symbolic", Gtk.IconSize.BUTTON)
         self.switch_tabs_button = Gtk.Button()
         self.switch_tabs_button.set_image(self.switch_tabs_icon)
@@ -527,21 +575,18 @@ class SimpleBrowser(Gtk.Window):
         self.switch_tabs_button.connect("clicked", self.toggle_tab_position)
         header_bar.pack_end(self.switch_tabs_button)
 
-        # Create main container
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(vbox)
 
-        # Progress bar at the top of the window
         self.progress_bar = Gtk.ProgressBar()
         self.progress_bar.set_show_text(True)
         self.progress_bar.hide()
         vbox.pack_start(self.progress_bar, False, False, 0)
 
-        # Notebook for tabs
         self.notebook = Gtk.Notebook()
         self.notebook.set_scrollable(True)
-        self.notebook.set_tab_pos(Gtk.PositionType.TOP)  # Default to top
-        vbox.pack_end(self.notebook, True, True, 0)  # Add the notebook last to ensure it fills the remaining space
+        self.notebook.set_tab_pos(Gtk.PositionType.TOP)
+        vbox.pack_end(self.notebook, True, True, 0)
         self.notebook.connect("switch-page", self.on_switch_page)
 
         self.bookmarks = []
@@ -549,7 +594,6 @@ class SimpleBrowser(Gtk.Window):
         self.load_bookmarks()
 
         self.homepage = "https://www.duckduckgo.com"
-
         self.on_new_tab()
 
     def toggle_tab_position(self, widget):
@@ -557,7 +601,6 @@ class SimpleBrowser(Gtk.Window):
         new_pos = Gtk.PositionType.TOP if current_pos == Gtk.PositionType.BOTTOM else Gtk.PositionType.BOTTOM
         self.notebook.set_tab_pos(new_pos)
 
-        # Change the image's icon based on the new tab position
         if new_pos == Gtk.PositionType.TOP:
             self.switch_tabs_icon.set_from_icon_name("go-down-symbolic", Gtk.IconSize.BUTTON)
         else:
@@ -591,28 +634,93 @@ class SimpleBrowser(Gtk.Window):
         keyval = event.keyval
         state = event.state
 
+        # Ctrl+T for new tab
         if keyval == Gdk.KEY_t and (state & Gdk.ModifierType.CONTROL_MASK):
             self.on_new_tab()
             return True
 
+        # Ctrl+W for close tab
         elif keyval == Gdk.KEY_w and (state & Gdk.ModifierType.CONTROL_MASK):
             self.on_close_tab()
             return True
 
+        # Ctrl+R for reload
         elif keyval == Gdk.KEY_r and (state & Gdk.ModifierType.CONTROL_MASK):
             self.on_reload_clicked(None)
             return True
 
+        # Ctrl+O for open URL
         elif keyval == Gdk.KEY_o and (state & Gdk.ModifierType.CONTROL_MASK):
             self.show_url_launcher()
             return True
 
+        # Ctrl+B for bookmark
         elif keyval == Gdk.KEY_b and (state & Gdk.ModifierType.CONTROL_MASK):
             self.on_add_bookmark(None)
             return True
 
+        # Shift+Tab for previous tab
+        elif keyval == Gdk.KEY_ISO_Left_Tab and (state & Gdk.ModifierType.SHIFT_MASK):
+            self.switch_to_previous_tab()
+            return True
+
+        # Ctrl+N for opening a new blank tab
+        elif keyval == Gdk.KEY_n and (state & Gdk.ModifierType.CONTROL_MASK):
+            self.on_new_blank_tab()
+            return True
+
+        # Ctrl+Q for quitting the application
+        elif keyval == Gdk.KEY_q and (state & Gdk.ModifierType.CONTROL_MASK):
+            self.quit_browser()
+            return True
+
         return False
 
+    def quit_browser(self):
+        logger.info("Application closed via shortcut.")
+        Gtk.main_quit()
+        sys.exit(0)
+
+        return False
+
+    def on_new_blank_tab(self):
+        # Create a new BrowserTab
+        new_tab = BrowserTab(self)
+
+        # Load a blank page in the webview, focusing the address bar but not updating it with 'about:blank'
+        new_tab.webview.load_uri("about:blank")
+
+        # Switch to the new tab
+        self.notebook.set_current_page(self.notebook.page_num(new_tab))
+
+        # Clear the address bar without setting 'about:blank'
+        new_tab.webview.connect("load-changed", self.on_load_blank_tab)
+
+        logger.info("Opened a new tab with an empty address bar.")
+
+    def on_load_blank_tab(self, webview, load_event):
+        if load_event == WebKit2.LoadEvent.FINISHED:
+            # Check if we're on 'about:blank' and set the address bar accordingly
+            if webview.get_uri() == "about:blank":
+                self.address_bar.set_text("")
+                self.address_bar.grab_focus()
+
+        return False
+
+    def clear_and_focus_address_bar(self):
+        # Clear the address bar and set focus, ensuring it's ready for input
+        self.address_bar.set_text("")
+        self.address_bar.grab_focus()
+        return False  # Stop the idle callback from running again
+
+    def switch_to_previous_tab(self):
+        current_page_num = self.notebook.get_current_page()
+        total_pages = self.notebook.get_n_pages()
+        if total_pages > 1:
+            previous_page_num = (current_page_num - 1) % total_pages
+            self.notebook.set_current_page(previous_page_num)
+            logger.info(f"Switched to previous tab: {previous_page_num}")
+            
     def show_url_launcher(self):
         dialog = Gtk.Dialog(
             title="Open URL",
@@ -637,23 +745,20 @@ class SimpleBrowser(Gtk.Window):
         dialog.destroy()
 
     def on_launcher_key_press(self, widget, event, dialog):
-        # Handle Ctrl + Enter for URL navigation
         if event.state & Gdk.ModifierType.CONTROL_MASK and event.keyval == Gdk.KEY_Return:
             url = self.ensure_tld(widget.get_text().strip())
             self.launch_url(url)
-            dialog.response(Gtk.ResponseType.CANCEL)  # Close the dialog
-            return True  # Ensure the main event doesn't act on this keypress
+            dialog.response(Gtk.ResponseType.CANCEL)
+            return True
         return False
 
     def on_launcher_enter(self, entry, dialog):
-        # Trigger search on Enter
         text = entry.get_text().strip()
         if text:
             self.search_duckduckgo(text)
-        dialog.response(Gtk.ResponseType.CANCEL)  # Close the dialog
+        dialog.response(Gtk.ResponseType.CANCEL)
 
     def search_duckduckgo(self, query):
-        # Quotes the query string to be used in a URL for DuckDuckGo search
         search_url = f"https://www.duckduckgo.com/?q={quote_plus(query)}"
         logger.info(f"Searching DuckDuckGo for: {query}")
         self.on_new_tab()
@@ -766,7 +871,7 @@ class SimpleBrowser(Gtk.Window):
     def on_destroy(self, widget):
         logger.info("Application closed.")
         Gtk.main_quit()
-        sys.exit(0)  # Ensure the process is terminated
+        sys.exit(0)
 
     def update_progress(self, progress):
         fraction = progress / 100.0
@@ -1010,7 +1115,7 @@ class SimpleBrowser(Gtk.Window):
         current_page = self.notebook.get_nth_page(page_num)
         if isinstance(current_page, BrowserTab):
             uri = current_page.webview.get_uri()
-            if uri is not None:  # Check if URI is not None before updating address bar
+            if uri is not None:
                 self.update_address_bar(uri)
                 logger.info(f"Switched to tab with URI: {uri}")
 
