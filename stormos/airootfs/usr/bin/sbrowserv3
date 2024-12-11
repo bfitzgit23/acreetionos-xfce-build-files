@@ -1,0 +1,3306 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import json
+import logging
+import re
+import threading
+import subprocess
+import shutil
+import datetime
+import secretstorage
+
+from urllib.parse import urlparse, quote_plus
+import locale
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('WebKit2', '4.0')
+from gi.repository import Gtk, WebKit2, GLib, Gdk, Pango
+gi.require_version("Secret", "1")
+from gi.repository import Secret
+import keyring
+import requests
+from bs4 import BeautifulSoup
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Disable hardware acceleration and compositing to prevent OpenGL context issues
+os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+os.environ['WEBKIT_DISABLE_COMPOSITING_MODE'] = '1'
+os.environ['WEBKIT_ACCELERATED'] = '0'
+os.environ['LIBVA_DRIVER_NAME'] = 'nvidia'
+
+
+# Set locale for numeric operations to 'C'
+locale.setlocale(locale.LC_NUMERIC, 'C')
+
+
+class SettingsManager:
+    """Handles storing and retrieving site-specific settings."""
+
+    def __init__(self):
+        self.settings_dir = os.path.join(os.path.expanduser('~'), '.simple_browser')
+        self.settings_file = os.path.join(self.settings_dir, 'site_settings.json')
+        logger.debug(f"Settings file path: {self.settings_file}")
+        self.settings = self.load_settings()
+
+        if not os.path.exists(self.settings_file):
+            self.save_settings()
+
+    def load_settings(self):
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r') as file:
+                    settings = json.load(file)
+                    logger.info("Settings loaded successfully.")
+                    return settings
+            logger.info("Settings file not found. Will create upon saving.")
+            return {}
+        except Exception as e:
+            logger.error(f"Error accessing settings file at {self.settings_file}: {e}")
+            return {}
+
+    def save_settings(self):
+        try:
+            os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+            with open(self.settings_file, 'w') as file:
+                json.dump(self.settings, file, indent=4)
+            logger.info("Settings saved successfully.")
+        except Exception as e:
+            logger.error(f"Error saving settings at {self.settings_file}: {e}")
+
+    def is_ad_blocking_enabled(self):
+        return self.settings.get("ad_blocking_enabled", True)
+
+    def set_ad_blocking_enabled(self, enabled):
+        self.settings["ad_blocking_enabled"] = enabled
+        self.save_settings()
+
+    def get_site_settings(self, url):
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        return self.settings.get(domain, {})
+
+    def set_site_settings(self, url, setting_key, setting_value):
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        if domain not in self.settings:
+            self.settings[domain] = {}
+        self.settings[domain][setting_key] = setting_value
+        self.save_settings()
+
+    def get_whitelist(self):
+        return self.settings.get("whitelist", [])
+
+    def add_to_whitelist(self, domain):
+        if domain not in self.settings.get("whitelist", []):
+            self.settings.setdefault("whitelist", []).append(domain)
+            self.save_settings()
+            logger.info(f"Added {domain} to whitelist.")
+
+    def remove_from_whitelist(self, domain):
+        if domain in self.settings.get("whitelist", []):
+            self.settings["whitelist"].remove(domain)
+            self.save_settings()
+            logger.info(f"Removed {domain} from whitelist.")
+
+
+
+
+
+
+
+
+
+class DownloadManager:
+    """Handles file downloads using Axel."""
+
+    def __init__(self, browser):
+        self.browser = browser
+        self.downloads = []
+        self.download_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
+        os.makedirs(self.download_folder, exist_ok=True)
+
+        self.download_history_file = os.path.join(self.download_folder, 'download_history.txt')
+        self.download_manager_window = None
+
+        self.load_download_history()
+
+        # Check if Axel is installed
+        if shutil.which("axel") is None:
+            self.show_axel_not_found_error()
+
+        # Initialize window attribute without creating it
+        self.download_manager_window = None
+
+
+
+    def start_download(self, uri, suggested_filename):
+        """Initiate a new download and ensure the download manager window is displayed."""
+        # Open or create the download manager window
+        self.create_download_manager_window()
+        
+        filename = self.sanitize_filename(suggested_filename)
+        filepath = os.path.join(self.download_folder, filename)
+
+        # Remove any existing partial download file to prevent resume attempts
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+        start_time = datetime.datetime.now()
+
+        # Command to run Axel with verbose output
+        cmd = ['axel', '-n', '8', '-v', '-o', filepath, uri]
+        threading.Thread(target=self.run_axel, args=(cmd, filepath)).start()
+
+        download = {
+            'uri': uri,
+            'filename': filename,
+            'filepath': filepath,
+            'progress': 0,
+            'status': 'Downloading',
+            'start_time': start_time.isoformat(),
+            'end_time': None,
+            'duration': None
+        }
+
+        self.downloads.append(download)
+        self.save_download_history()
+        GLib.idle_add(self.create_download_progress_ui, download)
+        GLib.idle_add(self.refresh_downloads_ui)
+
+
+
+
+
+
+
+    def on_download_manager_destroy(self, widget):
+        """Handle closing the download manager window."""
+        self.download_manager_window = None
+
+    def on_download_manager_show(self, widget):
+        """Refresh the downloads list when the window is shown."""
+        self.refresh_downloads_ui()
+
+    def load_download_history(self):
+        """Load download history from the text file."""
+        if os.path.exists(self.download_history_file):
+            with open(self.download_history_file, 'r') as f:
+                self.downloads = [line.strip() for line in f.readlines()]
+        else:
+            self.downloads = []
+
+
+    def create_download_manager_window(self):
+        """Create the Download Manager window and its UI components."""
+        if self.download_manager_window:
+            self.download_manager_window.present()
+            return
+
+        # Create the Download Manager window
+        self.download_manager_window = Gtk.Window(title="Simple Download Manager")
+        self.download_manager_window.set_default_size(800, 400)
+        self.download_manager_window.set_border_width(10)
+
+        # Vertical Box to hold all download entries and buttons
+        vbox_main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        # ScrolledWindow to contain the downloads_box
+        self.downloads_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.downloads_box.set_homogeneous(False)
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window.add(self.downloads_box)
+
+        vbox_main.pack_start(scrolled_window, True, True, 0)
+
+        # Create a horizontal box to hold buttons
+        hbox_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        # Clear History Button
+        clear_history_button = Gtk.Button(label="Clear Download History")
+        clear_history_button.connect("clicked", self.on_clear_download_history)
+
+        # Open Downloads Folder Button
+        open_folder_button = Gtk.Button(label="Open Downloads Folder")
+        open_folder_button.connect("clicked", self.open_downloads_folder)
+
+        hbox_buttons.pack_start(clear_history_button, True, True, 0)
+        hbox_buttons.pack_start(open_folder_button, True, True, 0)
+
+        vbox_main.pack_start(hbox_buttons, False, False, 0)
+        self.download_manager_window.add(vbox_main)
+
+        # Connect the delete-event to hide the window instead of destroying it
+        self.download_manager_window.connect("delete-event", self.on_download_manager_close)
+        self.download_manager_window.connect("show", self.on_download_manager_show)
+
+        self.download_manager_window.show_all()
+
+
+    def on_download_manager_close(self, widget, event):
+        """Hide the download manager window instead of destroying it."""
+        widget.hide()
+        return True  # Prevents the default destroy behavior
+
+    def open_downloads_folder(self, widget):
+        """Open the downloads folder using the default file manager."""
+        downloads_path = self.download_folder
+        subprocess.run(["xdg-open", downloads_path])
+
+
+
+    def refresh_downloads_ui(self):
+        """Refresh the download list UI."""
+        for child in self.downloads_box.get_children():
+            self.downloads_box.remove(child)
+
+        for download in self.downloads:
+            label = Gtk.Label(label=download)
+            self.downloads_box.pack_start(label, False, False, 0)
+
+        self.downloads_box.show_all()
+
+    def on_clear_download_history(self, widget):
+        """Clear the download history and update the UI."""
+        # Clear the downloads list
+        self.downloads = []
+
+        # Delete the history file if it exists
+        if os.path.exists(self.download_history_file):
+            os.remove(self.download_history_file)
+
+        # Refresh the UI to reflect the cleared history
+        self.refresh_downloads_ui()
+
+
+
+    def on_download_manager_destroy(self, widget):
+        """Handle the download manager window being closed."""
+        print("Download Manager window closed.")
+
+    def on_download_manager_show(self, widget):
+        """Reload download history when the window is shown."""
+        self.load_download_history()
+        self.refresh_downloads_ui()
+
+    def refresh_downloads_ui(self):
+        """Clear and recreate the download UI elements."""
+        for child in self.downloads_box.get_children():
+            self.downloads_box.remove(child)
+
+        for download in self.downloads:
+            self.create_download_progress_ui(download)
+
+        self.download_manager_window.show_all()
+
+    def show_axel_not_found_error(self):
+        """Display an error dialog if Axel is not installed."""
+        dialog = Gtk.MessageDialog(
+            transient_for=self.browser,
+            modal=True,
+            destroy_with_parent=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text="Axel Not Found",
+        )
+        dialog.format_secondary_text(
+            "The 'axel' utility is required for downloading files, but it was not found on your system. Please install Axel and restart the application."
+        )
+        dialog.run()
+        dialog.destroy()
+        self.browser.destroy()
+
+    def start_download(self, uri, suggested_filename):
+        """Initiate a new download."""
+        self.browser.create_download_manager_window()
+
+        filename = self.sanitize_filename(suggested_filename)
+        filepath = os.path.join(self.download_folder, filename)
+
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+        download = {
+            'uri': uri,
+            'filename': filename,
+            'filepath': filepath,
+            'progress': 0,
+            'status': 'Downloading'
+        }
+
+        self.downloads.append(download)
+        self.save_download_history()
+        GLib.idle_add(self.create_download_progress_ui, download)
+
+        # Run Axel in a separate thread
+        threading.Thread(target=self.run_axel, args=(uri, filepath, download)).start()
+
+
+
+    def run_axel(self, uri, filepath, download):
+        """Run the Axel subprocess and handle its output."""
+        cmd = ['axel', '-n', '8', '-v', '-o', filepath, uri]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+        for line in iter(process.stdout.readline, ''):
+            logger.debug(f"Axel output: {line.strip()}")
+            match = re.search(r'\[\s*(\d+)%\]', line)
+            if match:
+                percentage = int(match.group(1))
+                GLib.idle_add(self.update_download_progress, download, percentage)
+
+        process.wait()
+        if process.returncode == 0:
+            GLib.idle_add(self.complete_download, download)
+        else:
+            GLib.idle_add(self.fail_download, download)
+
+
+    def append_download_output(self, filepath, line):
+        """Append a line of text to the download's TextView."""
+        logger.debug(f"Appending output to {filepath}: {line.strip()}")
+        for download in self.downloads:
+            if download['filepath'] == filepath:
+                text_buffer = download.get('text_buffer')
+                scrolled_window = download.get('scrolled_window')
+                
+                if text_buffer and scrolled_window:
+                    end_iter = text_buffer.get_end_iter()
+                    text_buffer.insert(end_iter, line + "\n")
+                    
+                    # Auto-scroll to the bottom
+                    adjustment = scrolled_window.get_vadjustment()
+                    GLib.idle_add(adjustment.set_value, adjustment.get_upper())
+                    
+                break
+        return False  # Remove the idle callback
+
+
+    def complete_download(self, download):
+        """Mark the download as complete."""
+        download['status'] = 'Completed'
+        download['status_label'].set_text(download['status'])
+        download['progress_label'].set_text("100%")
+        download['progress_bar'].set_fraction(1.0)
+
+    def fail_download(self, download):
+        """Mark the download as failed."""
+        download['status'] = 'Failed'
+        download['status_label'].set_text(download['status'])
+        download['progress_label'].set_text("Failed")
+
+
+    def save_download_history(self):
+        """Save download history to a text file."""
+        try:
+            with open(self.download_history_file, 'w') as file:
+                for download in self.downloads:
+                    line = f"{download['filename']}|{download['filepath']}|{download['uri']}|{download['progress']}|{download['status']}|{download['start_time']}|{download['end_time']}|{download['duration']}\n"
+                    file.write(line)
+            logger.info("Download history saved to text file.")
+        except Exception as e:
+            logger.error(f"Failed to save download history: {e}")
+
+
+
+    def load_download_history(self):
+        """Load download history from a text file."""
+        self.downloads = []
+        if os.path.exists(self.download_history_file):
+            try:
+                with open(self.download_history_file, 'r') as file:
+                    for line in file:
+                        parts = line.strip().split('|')
+                        if len(parts) == 8:
+                            download = {
+                                'filename': parts[0],
+                                'filepath': parts[1],
+                                'uri': parts[2],
+                                'progress': int(parts[3]),
+                                'status': parts[4],
+                                'start_time': parts[5],
+                                'end_time': parts[6] if parts[6] != 'None' else None,
+                                'duration': float(parts[7]) if parts[7] != 'None' else None
+                            }
+                            self.downloads.append(download)
+                logger.info("Download history loaded from text file.")
+            except Exception as e:
+                logger.error(f"Failed to load download history: {e}")
+
+
+    def sanitize_filename(self, filename):
+        """Sanitize filename by removing invalid characters."""
+        return re.sub(r'[\\/*?:"<>|]', "_", filename)
+
+    def create_download_progress_ui(self, download):
+        """Create UI elements to display download information."""
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        # Horizontal box for labels and progress
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        filename_label = Gtk.Label(label=download['filename'])
+        filename_label.set_xalign(0)
+        filename_label.set_hexpand(True)
+
+        status_label = Gtk.Label(label=download['status'])
+        status_label.set_xalign(0)
+
+        progress_label = Gtk.Label(label="0%")
+        progress_label.set_xalign(0)
+
+        progress_bar = Gtk.ProgressBar()
+        progress_bar.set_fraction(0.0)
+        progress_bar.set_show_text(True)
+
+        hbox.pack_start(filename_label, True, True, 0)
+        hbox.pack_start(status_label, False, False, 0)
+        hbox.pack_start(progress_label, False, False, 0)
+
+        vbox.pack_start(hbox, False, False, 0)
+        vbox.pack_start(progress_bar, False, False, 0)
+
+        # Store references for UI updates
+        download['status_label'] = status_label
+        download['progress_label'] = progress_label
+        download['progress_bar'] = progress_bar
+
+        self.browser.downloads_box.pack_start(vbox, False, False, 0)
+        self.browser.download_manager_window.show_all()
+
+    def update_download_progress(self, download, percentage):
+        """Update the progress bar and label with the download progress."""
+        download['progress_label'].set_text(f"{percentage}%")
+        download['progress_bar'].set_fraction(percentage / 100.0)
+
+
+
+    def on_clear_download_output(self, widget, download):
+        """Clear the verbose output for a specific download."""
+        text_buffer = download.get('text_buffer')
+        if text_buffer:
+            text_buffer.set_text("")
+
+
+class AutofillManager:
+    """Manages form autofill data."""
+
+    def __init__(self):
+        self.autofill_dir = os.path.join(os.path.expanduser('~'), '.simple_browser')
+        self.autofill_data_file = os.path.join(self.autofill_dir, 'autofill_data.json')
+        self.autofill_data = self.load_autofill_data()
+
+    def load_autofill_data(self):
+        if os.path.exists(self.autofill_data_file):
+            try:
+                with open(self.autofill_data_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load autofill data: {e}")
+        return {}
+
+    def save_autofill_data(self):
+        try:
+            os.makedirs(os.path.dirname(self.autofill_data_file), exist_ok=True)
+            with open(self.autofill_data_file, 'w') as f:
+                json.dump(self.autofill_data, f, indent=4)
+            logger.info("Autofill data saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save autofill data: {e}")
+
+    def get_suggestions(self, domain, field_name):
+        return self.autofill_data.get(domain, {}).get(field_name, [])
+
+    def save_field_data(self, domain, field_name, value):
+        if domain not in self.autofill_data:
+            self.autofill_data[domain] = {}
+        if field_name not in self.autofill_data[domain]:
+            self.autofill_data[domain][field_name] = []
+        if value not in self.autofill_data[domain][field_name]:
+            self.autofill_data[domain][field_name].append(value)
+            self.save_autofill_data()
+        logger.info(f"Saved autofill data for {domain}: {field_name} -> {value}")
+
+
+class CredentialsManager:
+    """Manages storing and retrieving saved credentials securely using keyring."""
+
+    def __init__(self):
+        pass  # No initialization needed for keyring
+
+
+
+    def save_credentials(self, site, username, password):
+        """Save credentials securely using KDE Wallet via secretstorage."""
+        try:
+            # Check for None values and log them
+            if not site:
+                logger.error("Site is missing.")
+                raise ValueError("Site cannot be None.")
+            if not username:
+                logger.error("Username is missing.")
+                raise ValueError("Username cannot be None.")
+            if not password:
+                logger.error("Password is missing.")
+                raise ValueError("Password cannot be None.")
+
+            # Establish connection to KDE Wallet (Secret Service)
+            connection = secretstorage.dbus_init()
+            collection = secretstorage.get_default_collection(connection)
+
+            # Create a new secret item with site, username, and password
+            attributes = {'site': site, 'username': username}
+            label = f"Credentials for {site}"
+            
+            # Ensure the password is bytes
+            secret_bytes = password.encode('utf-8')
+            
+            # Create and store the secret item
+            collection.create_item(label, attributes, secret_bytes, replace=True)
+
+            logger.info(f"Credentials for {site} saved successfully.")
+        except Exception as e:
+            logger.error(f"Error saving credentials: {e}")
+
+
+
+
+    def get_credentials(self, site):
+        """Retrieve saved credentials."""
+        try:
+            username = keyring.get_password(site, 'username')
+            password = keyring.get_password(site, 'password')
+            if username and password:
+                logger.info(f"Credentials for {site} retrieved.")
+                return username, password
+        except Exception as e:
+            logger.error(f"Error retrieving credentials: {e}")
+        return None, None
+
+
+class BrowserTab(Gtk.Box):
+    """A class representing a single browser tab."""
+
+    def __init__(self, browser, ad_block_rules=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.browser = browser
+        self.settings_manager = self.browser.settings_manager
+        self.autofill_manager = self.browser.autofill_manager
+        self.credentials_manager = self.browser.credentials_manager
+
+        self.user_content_manager = WebKit2.UserContentManager()
+        # Register the message handlers
+        self.user_content_manager.register_script_message_handler("loginDetector")
+        self.user_content_manager.register_script_message_handler("autofill")
+        self.user_content_manager.register_script_message_handler("mediaControl")
+        self.user_content_manager.connect("script-message-received::loginDetector", self.on_login_form_detected)
+        self.user_content_manager.connect("script-message-received::autofill", self.on_autofill_message_received)
+        self.user_content_manager.connect("script-message-received::mediaControl", self.on_script_message_received)
+
+        self.webview = WebKit2.WebView.new_with_user_content_manager(self.user_content_manager)
+
+        self.settings = self.webview.get_settings()
+        self.settings.set_property("enable-javascript", True)
+        self.settings.set_property("enable-html5-database", True)
+        self.settings.set_property("enable-html5-local-storage", True)
+        self.settings.set_property("enable-page-cache", True)
+        self.settings.set_property("enable-media-stream", True)
+        self.settings.set_property("enable-mediasource", True)
+        self.settings.set_property("enable-media-capabilities", True)
+        self.settings.set_property("enable-media-stream", True)
+        self.settings.set_property("enable-webgl", True)  # Enable WebGL for better video playback support
+        self.settings.set_property("enable-plugins", True)  # Enable plugins if needed
+        self.webview.set_settings(self.settings)
+
+
+
+        # Cookie manager settings might be better suited during browser initialization:
+        cookie_manager = browser.web_context.get_cookie_manager()
+        cookie_manager.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
+        logger.info("Cookies are accepted to improve site compatibility.")
+
+
+
+        self.current_uri = None
+        self.is_muted = False
+
+        # Connect signals
+        self.webview.connect("notify::title", self.on_title_changed)
+        self.webview.connect("load-changed", self.on_load_changed)
+        self.webview.connect("notify::estimated-load-progress", self.on_load_progress)
+        self.webview.connect("notify::uri", self.on_uri_changed)
+
+        # Connect to the "decide-policy" signal
+        self.webview.connect("decide-policy", self.on_decide_policy)
+
+        #self.webview.connect("download-started", self.on_download_started)
+
+        # Set a Chrome user-agent
+        self.settings.set_property(
+            "user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        self.webview.set_settings(self.settings)
+        self.pack_start(self.webview, True, True, 0)
+        self.show_all()
+
+        #self.settings.set_property("enable-private-browsing", True)  # Ensure this isn't mistaken by site checks.
+
+
+
+
+        # Inject necessary scripts
+        self.inject_login_detection_script()
+        self.inject_autofill_script()
+        self.inject_adblock_script(ad_block_rules)
+
+        self.pack_start(self.webview, True, True, 0)
+        self.webview.load_uri(self.browser.homepage)
+        self.show_all()
+
+        # Setup tab label with mute and close buttons
+        self.setup_tab_label()
+
+    def setup_tab_label(self):
+        self.tab_label_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.tab_label = Gtk.Label(label="New Tab")
+        self.tab_label.set_xalign(0)
+        self.tab_label_box.pack_start(self.tab_label, True, True, 0)
+
+        # Add Mute Button
+        self.mute_button = Gtk.Button.new_from_icon_name("audio-volume-high", Gtk.IconSize.BUTTON)
+        self.mute_button.set_tooltip_text("Mute/Unmute Tab")
+        self.mute_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.mute_button.set_focus_on_click(False)
+        self.mute_button.connect("clicked", self.on_mute_toggle)
+        self.tab_label_box.pack_start(self.mute_button, False, False, 0)
+
+        # Add Plus Button
+        self.plus_button = Gtk.Button.new_from_icon_name("list-add", Gtk.IconSize.BUTTON)
+        self.plus_button.set_tooltip_text("Open New Tab")
+        self.plus_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.plus_button.set_focus_on_click(False)
+        self.plus_button.connect("clicked", self.browser.on_new_tab)
+        self.tab_label_box.pack_start(self.plus_button, False, False, 0)
+
+        # Add Close Button
+        self.close_button = Gtk.Button.new_from_icon_name("window-close", Gtk.IconSize.BUTTON)
+        self.close_button.set_tooltip_text("Close Tab")
+        self.close_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.close_button.set_focus_on_click(False)
+        self.close_button.connect("clicked", self.browser.on_close_tab, self)
+        self.tab_label_box.pack_start(self.close_button, False, False, 0)
+
+        self.tab_label_box.set_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.tab_label_box.connect("button-press-event", self.on_tab_right_click)
+
+        self.tab_label_box.show_all()
+        self.browser.notebook.append_page(self, self.tab_label_box)
+        self.browser.notebook.set_tab_reorderable(self, True)
+        self.browser.notebook.set_current_page(-1)
+
+    
+    def on_load_changed(self, webview, load_event):
+        """Handle load events to update the address bar and perform autofill."""
+        if load_event == WebKit2.LoadEvent.FINISHED:
+            self.browser.progress_bar.hide()
+            logger.info("Page load finished.")
+            # Perform autofill when the page has finished loading
+            username, password = self.browser.credentials_manager.get_credentials(urlparse(self.current_uri).netloc)
+            if username and password:
+                self.perform_autofill(username, password)
+        elif load_event == WebKit2.LoadEvent.STARTED:
+            self.browser.progress_bar.show()
+            logger.info("Page load started.")
+
+
+    def on_decide_policy(self, webview, decision, decision_type):
+        if decision_type == WebKit2.PolicyDecisionType.RESPONSE:
+            response = decision.get_response()
+            mime_type = response.get_mime_type()
+
+            # Define MIME types for video playback
+            video_mime_types = [
+                'video/mp4',                     # .mp4 files
+                'video/x-msvideo',               # .avi files
+                'video/x-matroska',              # .mkv files
+                'video/webm',                    # .webm files
+                'video/quicktime',               # .mov files
+                'application/vnd.apple.mpegurl', # HLS streams
+            ]
+
+            # Define MIME types that trigger downloads
+            download_mime_types = [
+                'application/octet-stream',      # General binary files
+                'application/x-iso9660-image',   # .iso files specifically
+            ]
+
+            # Get the URI and suggested filename
+            uri = response.get_uri()
+            suggested_filename = response.get_suggested_filename() or os.path.basename(urlparse(uri).path) or 'download'
+
+            # Handle downloads for video and specific MIME types
+            if mime_type in download_mime_types or mime_type in video_mime_types or not mime_type.startswith('text/'):
+                logger.info(f"Starting download for type {mime_type}: {suggested_filename}")
+                
+                # Trigger the Download Manager to start the download
+                self.browser.download_manager.start_download(uri, suggested_filename)
+                
+                # Cancel the default download behavior
+                decision.ignore()
+                return True  # Indicate custom handling
+
+        # Default handling for other cases
+        return False
+
+
+
+
+    def is_video_link(self, url):
+        """Check if the URL points to a video file or streaming site."""
+        video_extensions = (".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv")
+        parsed_url = urlparse(url)
+        return parsed_url.path.endswith(video_extensions) or "youtube.com" in url or "vimeo.com" in url or "eporner.com" 
+
+
+
+
+
+    def on_download_started(self, webview, download):
+        download.connect("decide-destination", self.on_decide_destination)
+        download.connect("received-data", self.on_received_data)
+        download.connect("finished", self.on_download_finished)
+
+    def on_decide_destination(self, download, suggested_filename):
+        downloads_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        os.makedirs(downloads_dir, exist_ok=True)
+        destination = f"file://{downloads_dir}/{suggested_filename}"
+        download.set_destination(destination)
+        return True  # Indicate that the destination has been set
+
+    def on_received_data(self, download, data_length):
+        total = download.get_estimated_progress() * 100
+        # Update a progress bar or similar UI element here
+        logger.info(f"Download progress: {total:.2f}%")
+
+    def on_download_finished(self, download):
+        logger.info("Download finished.")
+        # Update the UI to reflect the download completion
+
+
+
+    def set_user_agent(self, url):
+        """Set the user agent dynamically based on the URL."""
+        if "youtube.com" in url:
+            # Set an empty user agent for YouTube
+            self.settings.set_property("user-agent", "")
+            logger.info("User agent set to empty for YouTube.")
+        elif any(domain in url for domain in ["pluto.tv", "therokuchannel.com", "watch.plex.tv", "crackle.com", "eporner.com", "sourceforge.net"]):
+            # Set a non-empty user agent for PlutoTV, The Roku Channel, and Plex TV
+            self.settings.set_property(
+                "user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            logger.info("User agent set to default for PlutoTV, The Roku Channel, or Plex TV.")
+        else:
+            # Default user agent for other sites
+            self.settings.set_property(
+                "user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            logger.info("Default user agent applied.")
+
+        self.webview.set_settings(self.settings)
+
+
+
+    def on_uri_changed(self, webview, param):
+        """Update current URI, apply user agent, and apply site-specific settings."""
+        self.current_uri = webview.get_uri()
+        self.set_user_agent(self.current_uri)
+        self.browser.update_address_bar(self.current_uri)
+        logger.info(f"Address bar updated to: {self.current_uri}")
+        self.apply_site_settings(self.current_uri)
+
+
+
+
+    def inject_login_detection_script(self):
+        """Inject JavaScript to detect login forms."""
+        login_detection_js = """
+        (function() {
+            function detectLoginForms() {
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    if (form.querySelector('input[type="password"]')) {
+                        window.webkit.messageHandlers.loginDetector.postMessage(JSON.stringify({
+                            action: 'loginFormDetected',
+                            form: {
+                                action: form.getAttribute('action'),
+                                method: form.getAttribute('method')
+                            }
+                        }));
+                    }
+                });
+            }
+
+            if (document.readyState === 'complete') {
+                detectLoginForms();
+            } else {
+                window.addEventListener('load', detectLoginForms);
+            }
+        })();
+        """
+        user_script = WebKit2.UserScript.new(
+            login_detection_js,
+            WebKit2.UserContentInjectedFrames.ALL_FRAMES,
+            WebKit2.UserScriptInjectionTime.END
+        )
+        self.user_content_manager.add_script(user_script)
+
+    def inject_autofill_script(self):
+        """Inject JavaScript to listen for form submissions and send data to Python."""
+        autofill_script = """
+        (function() {
+            function notifyPython(message) {
+                window.webkit.messageHandlers.autofill.postMessage(JSON.stringify(message));
+            }
+
+            document.addEventListener('submit', function(event) {
+                var form = event.target;
+                var inputs = form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+                var formData = {};
+                inputs.forEach(function(input) {
+                    if (input.name || input.id) {
+                        formData[input.name || input.id] = input.value;
+                    }
+                });
+                notifyPython({
+                    action: 'formSubmitted',
+                    data: formData
+                });
+            }, true);
+        })();
+        """
+        user_script = WebKit2.UserScript.new(
+            autofill_script,
+            WebKit2.UserContentInjectedFrames.ALL_FRAMES,
+            WebKit2.UserScriptInjectionTime.START
+        )
+        self.user_content_manager.add_script(user_script)
+
+    def inject_adblock_script(self, ad_block_rules):
+        """Inject JavaScript to block ads based on provided rules."""
+        if not ad_block_rules:
+            return
+
+        adblock_js = """
+        (function() {
+            function hideAds() {
+                const selectors = [%s];
+                selectors.forEach(selector => {
+                    const elements = document.querySelectorAll(selector);
+                    elements.forEach(el => el.style.display = 'none');
+                });
+            }
+            hideAds();
+            const observer = new MutationObserver((mutationsList, observer) => {
+                hideAds();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+        """ % ", ".join([f'"{selector}"' for selector in ad_block_rules])
+
+        user_script = WebKit2.UserScript.new(
+            adblock_js,
+            WebKit2.UserContentInjectedFrames.ALL_FRAMES,
+            WebKit2.UserScriptInjectionTime.END
+        )
+        self.user_content_manager.add_script(user_script)
+
+    def on_login_form_detected(self, user_content_manager, message):
+        """Handle login form detection."""
+        try:
+            data = json.loads(message.get_js_value().to_string())
+            if data.get('action') == 'loginFormDetected':
+                logger.info("Login form detected via JavaScript.")
+                self.prompt_to_save_credentials()
+                
+                # Attempt to autofill if credentials are already saved
+                if self.current_uri:
+                    domain = urlparse(self.current_uri).netloc
+                    username, password = self.credentials_manager.get_credentials(domain)
+                    if username and password:
+                        self.perform_autofill(username, password)
+        except Exception as e:
+            logger.error(f"Failed to parse loginDetector message: {e}")
+
+
+    def perform_autofill(self, username, password):
+        """Automatically fill saved credentials into the login form, including handling dynamic content and iframes."""
+        if not self.current_uri:
+            logger.warning("No current URI to perform autofill.")
+            return
+
+        parsed_url = urlparse(self.current_uri)
+        domain = parsed_url.hostname
+
+        if not domain:
+            logger.warning("Cannot perform autofill without domain information.")
+            return
+
+        # JavaScript to fill in the username and password fields, including inside iframes
+        autofill_js = f"""
+        (function() {{
+            function autofillFields(doc) {{
+                var usernameField = doc.querySelector('input[type="text"], input[type="email"]');
+                var passwordField = doc.querySelector('input[type="password"]');
+                
+                if (usernameField && passwordField) {{
+                    usernameField.value = "{username}";
+                    passwordField.value = "{password}";
+                    console.log("Autofilled username and password.");
+                }} else {{
+                    console.warn("Could not find username or password fields to autofill.");
+                }}
+            }}
+
+            function tryAutofill() {{
+                autofillFields(document);
+
+                var iframes = document.querySelectorAll('iframe');
+                iframes.forEach(function(iframe) {{
+                    try {{
+                        var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        autofillFields(iframeDoc);
+                    }} catch (e) {{
+                        console.warn("Could not access iframe due to cross-origin restrictions.");
+                    }}
+                }});
+            }}
+
+            // Run autofill immediately and on future content changes
+            tryAutofill();
+
+            // Observe dynamic changes to the DOM and try autofill again when changes occur
+            var observer = new MutationObserver(function(mutations) {{
+                tryAutofill();
+            }});
+
+            observer.observe(document.body, {{ childList: true, subtree: true }});
+        }})();
+        """
+
+        # Inject the JavaScript into the current page
+        self.webview.run_javascript(autofill_js, None, self.on_autofill_injected, None)
+        logger.info(f"Autofill script injected for domain: {domain}")
+
+
+
+    def set_default_user_agent(self):
+        """Optionally revert to a standard user-agent for problematic sites."""
+        # Revert to WebKit's default user-agent when needed
+        default_agent = self.webview.get_settings().get_property("user-agent")
+        self.settings.set_property("user-agent", default_agent)
+        logger.info("Reverted to browser's default user-agent for better compatibility.")
+
+
+
+
+    def log_captcha_attempts(self, url):
+        """Logs details around CAPTCHA activities for debugging."""
+        logger.info(f"CAPTCHA encountered. Verifying for page: {url}")
+
+        # Use this method where interaction or form activity is detected via JavaScript messages.
+        self.user_content_manager.connect("script-message-received::autofill", self.log_captcha_attempts)
+
+
+
+
+    def execute_captcha_js(self):
+        captcha_js = """
+        (function() {
+            console.log("Executing CAPTCHA interaction script.");
+            var iframe = document.querySelector('iframe');
+            if (iframe) {
+                iframe.contentWindow.location.reload();
+            }
+        })();
+        """
+        self.webview.run_javascript(captcha_js, None, None, None)
+        logger.info("Executed CAPTCHA interaction script.")
+
+
+
+
+    def handle_load_errors(self, webview, load_event):
+        if load_event == WebKit2.LoadEvent.FAILED:
+            logger.error("Failed to load a page, initiating CAPTCHA handling logic.")
+            if "captcha" in webview.get_uri().lower():
+                self.execute_captcha_js()  # Run any necessary fallback logic to reattempt page load
+
+    # Trigger this function when load events occur:
+        self.webview.connect("load-changed", self.handle_load_errors)
+
+
+
+    def on_autofill_message_received(self, user_content_manager, message):
+        """Handle autofill form submission messages."""
+        try:
+            data = json.loads(message.get_js_value().to_string())
+            if data.get('action') == 'formSubmitted':
+                form_data = data.get('data', {})
+                logger.info(f"Form submitted with data: {form_data}")
+                self.handle_form_submission(form_data)
+        except Exception as e:
+            logger.error(f"Failed to parse autofill message: {e}")
+
+
+    def on_autofill_injected(self, web_view, result, user_data):
+        """Handle the result of the autofill JavaScript execution."""
+        try:
+            web_view.run_javascript_finish(result)
+            logger.info("Autofill JavaScript executed successfully.")
+        except Exception as e:
+            logger.error(f"Failed to execute autofill JavaScript: {e}")
+
+
+
+    def handle_form_submission(self, form_data):
+        """Process form submission data."""
+        # Extract username and password from form_data
+        username = None
+        password = None
+        for key, value in form_data.items():
+            if 'user' in key.lower():
+                username = value
+            elif 'pass' in key.lower():
+                password = value
+
+        if username and password:
+            domain = urlparse(self.current_uri).netloc
+            self.prompt_to_save_credentials(username, password, domain)
+
+    def prompt_to_save_credentials(self, site, username, password):
+        """Prompt the user to save credentials unless they've previously declined."""
+        if site in self.declined_sites:
+            logger.info(f"User previously declined to save credentials for {site}. Skipping prompt.")
+            return
+
+        dialog = Gtk.MessageDialog(
+            parent=self,
+            modal=True,
+            destroy_with_parent=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="Save Credentials?",
+        )
+        dialog.format_secondary_text(f"Would you like to save credentials for {site}?")
+
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.YES:
+            self.save_credentials(site, username, password)
+        elif response == Gtk.ResponseType.NO:
+            self.declined_sites.append(site)
+            self.save_declined_sites()
+
+    def clear_declined_sites(self):
+        """Clear the list of declined sites."""
+        self.declined_sites = []
+        self.save_declined_sites()
+        logger.info("Declined sites list cleared.")
+
+
+
+
+    def on_script_message_received(self, user_content_manager, message):
+        """Handle media control messages (play/pause)."""
+        body = message.get_js_value().to_string()
+        logger.info(f"Script message received: {body}")
+
+        if body == 'play':
+            self.handle_media_play()
+        elif body == 'pause':
+            self.handle_media_pause()
+
+    def handle_media_play(self):
+        logger.info("Media started playing.")
+
+    def handle_media_pause(self):
+        logger.info("Media paused.")
+
+    def apply_site_settings(self, url):
+        """Apply site-specific settings like mute."""
+        site_settings = self.settings_manager.get_site_settings(url)
+        logger.info(f"Retrieved settings for {url}: {site_settings}")
+        if 'mute' in site_settings:
+            self.is_muted = site_settings['mute']
+            if self.is_muted:
+                self.mute_audio(url)
+            else:
+                self.unmute_audio(url)
+            logger.info(f"Applied mute setting for {url}: {self.is_muted}")
+
+    def save_site_settings(self, url, setting_key, setting_value):
+        """Save site-specific settings."""
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        if domain:
+            self.browser.settings_manager.set_site_settings(url, setting_key, setting_value)
+
+
+    def on_tab_right_click(self, widget, event):
+        """Show context menu on right-click of the tab."""
+        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 3:
+            self.show_context_menu(event)
+
+    def show_context_menu(self, event):
+        """Display context menu for the tab."""
+        menu = Gtk.Menu()
+
+        mute_label = "Unmute" if self.is_muted else "Mute"
+        mute_item = Gtk.MenuItem(label=mute_label)
+        mute_item.connect("activate", self.on_mute_toggle)
+        menu.append(mute_item)
+
+        reload_item = Gtk.MenuItem(label="Reload Tab")
+        reload_item.connect("activate", self.on_reload_tab)
+        menu.append(reload_item)
+
+        close_item = Gtk.MenuItem(label="Close Tab")
+        # Corrected the method name here
+        close_item.connect("activate", self.browser.on_close_tab, self)
+        menu.append(close_item)
+
+        menu.show_all()
+        menu.popup_at_pointer(event)
+
+    def on_mute_toggle(self, widget):
+        """Toggle mute state of the tab."""
+        current_url = self.webview.get_uri()
+        if self.is_muted:
+            self.unmute_audio(current_url)
+        else:
+            self.mute_audio(current_url)
+
+    def on_reload_tab(self, widget):
+        """Reload the current tab."""
+        self.webview.reload()
+        logger.info("Tab reloaded.")
+
+    def on_title_changed(self, webview, param):
+        """Update the tab label with the page title."""
+        title = webview.get_title() or "New Tab"
+        shortened_title = self.shorten_title(title, max_length=30)
+        GLib.idle_add(self.tab_label.set_text, shortened_title)
+        logger.info(f"Tab title updated to: {shortened_title}")
+
+    def shorten_title(self, title, max_length=30):
+        """Shorten the tab title if it exceeds max_length."""
+        if len(title) > max_length:
+            return title[:max_length] + '...'
+        return title
+
+    def mute_audio(self, url):
+        """Mute all media elements on the page."""
+        self.is_muted = True
+        self.save_site_settings(url, 'mute', True)
+        mute_script = """
+        var mediaElements = document.querySelectorAll('audio, video');
+        mediaElements.forEach(ele => ele.muted = true);
+        """
+        self.mute_button.set_image(Gtk.Image.new_from_icon_name("audio-volume-muted", Gtk.IconSize.BUTTON))
+        self.webview.run_javascript(mute_script, None, None, None)
+        logger.info(f"Muted audio for: {url}")
+
+    def unmute_audio(self, url):
+        """Unmute all media elements on the page."""
+        self.is_muted = False
+        self.save_site_settings(url, 'mute', False)
+        unmute_script = """
+        var mediaElements = document.querySelectorAll('audio, video');
+        mediaElements.forEach(ele => ele.muted = false);
+        """
+        self.mute_button.set_image(Gtk.Image.new_from_icon_name("audio-volume-high", Gtk.IconSize.BUTTON))
+        self.webview.run_javascript(unmute_script, None, None, None)
+        logger.info(f"Unmuted audio for: {url}")
+
+
+
+    def on_autofill_injected(self, web_view, result, user_data):
+        """Handle the result of the autofill JavaScript execution."""
+        try:
+            web_view.run_javascript_finish(result)
+            logger.info("Autofill JavaScript executed successfully.")
+        except Exception as e:
+            logger.error(f"Failed to execute autofill JavaScript: {e}")
+
+
+        
+        # Attempt to autofill if credentials exist
+        if self.current_uri:
+            domain = urlparse(self.current_uri).netloc
+            username, password = self.credentials_manager.get_credentials(domain)
+            if username and password:
+                self.perform_autofill(username, password)
+        elif load_event == WebKit2.LoadEvent.FAILED:
+            self.browser.progress_bar.hide()
+            logger.error("Page load failed.")
+
+
+    def on_load_progress(self, webview, param):
+        """Update the browser's progress bar based on page load progress."""
+        progress = webview.get_estimated_load_progress() * 100
+        self.browser.update_progress(progress)
+        logger.debug(f"Load progress updated: {progress}%")
+
+    # ------------------------------
+    # Context Menu and Media Control
+    # ------------------------------
+    def show_context_menu(self, event):
+        """Display context menu for the tab."""
+        menu = Gtk.Menu()
+
+        mute_label = "Unmute" if self.is_muted else "Mute"
+        mute_item = Gtk.MenuItem(label=mute_label)
+        mute_item.connect("activate", self.on_mute_toggle)
+        menu.append(mute_item)
+
+        reload_item = Gtk.MenuItem(label="Reload Tab")
+        reload_item.connect("activate", self.on_reload_tab)
+        menu.append(reload_item)
+
+        close_item = Gtk.MenuItem(label="Close Tab")
+        # Corrected the method name here
+        close_item.connect("activate", self.browser.on_close_tab, self)
+        menu.append(close_item)
+
+        menu.show_all()
+        menu.popup_at_pointer(event)
+
+    # ------------------------------
+    # Media Control Functions
+    # ------------------------------
+    def on_script_message_received_autofill(self, user_content_manager, message):
+        """Handle autofill form submission messages."""
+        self.on_autofill_message_received(user_content_manager, message)
+
+    # Additional methods can be added here as needed
+
+
+class SimpleBrowser(Gtk.Window):
+    """Main browser window."""
+
+
+
+
+
+    TLD_SET = {".com", ".org", ".net", ".io", ".co"}
+    PROBABLE_URL_REGEX = re.compile(r'^\S+?\.\S+')
+
+    def __init__(self):
+        super(SimpleBrowser, self).__init__()
+        self.set_default_size(1200, 800)
+        self.set_title("Simple Browser")
+        self.connect('destroy', self.on_destroy)
+
+        self.web_context = WebKit2.WebContext.get_default()
+        self.setup_cookie_manager()
+
+        self.settings_manager = SettingsManager()
+        self.autofill_manager = AutofillManager()
+        self.credentials_manager = CredentialsManager()
+
+
+
+        self.DECLINED_SITES_FILE = os.path.join(os.path.expanduser("~"), ".simple_browser", "declined_sites.json")
+        self.declined_sites = self.load_declined_sites()
+
+        # Initialize MPV player
+        #self.mpv_player = mpv.MPV()
+        #self.mpv_player.observe_property('idle-active', self.on_mpv_idle)
+        #self.mpv_player = mpv.MPV(ytdl=True)  # Enable youtube-dl support for streaming URLs
+
+
+        # Initialize Download Manager
+        self.download_manager = DownloadManager(self)
+
+        # Create download manager UI components
+        self.create_download_manager_window()
+
+        self.connect("window-state-event", self.on_window_state_event)
+
+        # WebKit2 context
+        self.web_context = WebKit2.WebContext.get_default()
+        cookie_manager = self.web_context.get_cookie_manager()
+        cookie_manager.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
+
+        # Set up persistent cookie storage
+        cookie_storage_path = os.path.join(os.path.expanduser("~"), ".simple_browser", "cookies.sqlite")
+        cookie_manager.set_persistent_storage(cookie_storage_path, WebKit2.CookiePersistentStorage.SQLITE)
+        logger.info(f"Cookie storage path set to: {cookie_storage_path}")
+
+        # Additional logging to confirm setup
+        logger.debug("CookieManager accept policy set to ALWAYS.")
+
+
+        
+
+
+        # Global keyboard shortcuts
+        self.connect("key-press-event", self.on_key_press_global)
+
+        # GTK Theme
+        settings = Gtk.Settings.get_default()
+        settings.set_property("gtk-application-prefer-dark-theme", True)
+
+        # Header Bar
+        header_bar = Gtk.HeaderBar()
+        header_bar.set_show_close_button(True)
+        self.set_titlebar(header_bar)
+        self.connect("key-press-event", self.on_key_press_global)
+
+        # Address Bar
+        self.address_bar = Gtk.Entry()
+        self.address_bar.set_placeholder_text("Enter URL or search DuckDuckGo")
+        self.address_bar.set_width_chars(80)
+        self.address_bar.connect("activate", self.on_enter_address)
+        self.address_bar.connect("key-press-event", self.on_key_press)
+        header_bar.set_custom_title(self.address_bar)
+
+        # Navigation Buttons
+        self.add_navigation_buttons(header_bar)
+
+
+        self.add_session_buttons(header_bar)  # Add session buttons
+
+
+        # New Tab Button
+        new_tab_button = Gtk.Button.new_with_label("+")
+        new_tab_button.set_tooltip_text("New Tab")
+        new_tab_button.connect("clicked", self.on_new_tab)
+        header_bar.pack_end(new_tab_button)
+
+        # Add Progress Bar to Header Bar
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_bar.set_show_text(True)
+        self.progress_bar.set_fraction(0.0)
+        self.progress_bar.set_hexpand(True)
+        self.progress_bar.set_valign(Gtk.Align.CENTER)
+        self.progress_bar.set_margin_start(10)
+        self.progress_bar.set_margin_end(10)
+        header_bar.pack_start(self.progress_bar)
+
+        # Apply custom CSS for styling tabs and browser background with dark royal purple
+        css = """
+        * {
+            background-color: #660000; /* Blood red for non-tab elements */
+            color: #ffffff; /* White text for non-tab elements */
+        }
+
+        headerbar {
+            background-color: #660000; /* Blood red for the header */
+            color: #ffffff;
+        }
+
+        button, entry, progressbar {
+            background-color: #800000; /* Slightly lighter blood red for interactive elements */
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #990000; /* Lighter blood red on hover */
+        }
+
+        /* Blue progress bar */
+        progressbar {
+            background-color: #990000 /* Blue background for the progress bar */
+        }
+
+        progressbar trough {
+            background-color: #660000; /* Dodger blue for the trough */
+        }
+
+        progressbar progress {
+            background-color: yellow; /* Dark blue for the progress indicator */
+        }
+
+        .notebook tab {
+            background-image: linear-gradient(to bottom right, #003366, #002244); /* Gradient from dark navy blue to darker blue */
+            color: #ffffff; /* White text */
+            font-weight: bold; /* Bold text */
+            border: 2px solid #00008b; /* Dark blue border */
+            outline: 3px solid #002244; /* Additional outline around tabs */
+            box-shadow: 0 0 5px 2px rgba(0, 0, 139, 0.5); /* Subtle box shadow in dark blue */
+            padding: 4px;
+            margin: 2px;
+            min-height: 20px;
+            border-radius: 8px; /* Rounded corners */
+        }
+
+        .notebook tab:checked {
+            background-image: linear-gradient(to bottom right, #004488, #003366); /* Inverted gradient for active tab */
+            color: #ffffff; /* White text for active tab */
+            font-weight: bold; /* Bold text */
+            border: 2px solid #00008b; /* Dark blue border for active tab */
+            outline: 3px solid #002244; /* Accent outline around active tabs */
+            box-shadow: 0 0 8px 3px rgba(0, 0, 139, 0.7); /* More pronounced box shadow for active tab */
+            padding: 4px;
+            margin: 2px;
+            min-height: 20px;
+            border-radius: 8px; /* Rounded corners */
+        }
+
+        entry selection {
+            background-color: yellow; /* Yellow highlight for selected text */
+            color: black;  /* Change text color when highlighted */
+        }
+
+        """
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css.encode('utf-8'))
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        self.notebook = Gtk.Notebook()
+        self.notebook.set_scrollable(True)
+        self.notebook.set_tab_pos(Gtk.PositionType.TOP)
+        self.notebook.connect("switch-page", self.on_switch_page)
+        self.add(self.notebook)
+
+        # Add Adblock Toggle
+        self.add_adblock_toggle(header_bar)
+
+        # Add Whitelist Manager Button
+        self.add_whitelist_manager_button(header_bar)
+
+        # Add Additional Buttons
+        about_button = Gtk.Button.new_from_icon_name("help-about", Gtk.IconSize.BUTTON)
+        about_button.set_tooltip_text("About Us")
+        about_button.connect("clicked", self.on_about_us)
+        header_bar.pack_end(about_button)
+
+        # Create a download manager button with a download folder icon
+        #download_manager_button = Gtk.Button.new_from_icon_name("folder-download", Gtk.IconSize.BUTTON)
+        #download_manager_button.set_tooltip_text("Open Download Manager")
+        #download_manager_button.connect("clicked", self.create_download_manager_window)
+
+
+        # Add the button to the header bar
+        #header_bar.pack_end(download_manager_button)
+
+
+        print_button = Gtk.Button.new_from_icon_name("document-print", Gtk.IconSize.BUTTON)
+        print_button.set_tooltip_text("Print")
+        print_button.connect("clicked", self.on_print_page)
+        header_bar.pack_end(print_button)
+
+        screenshot_button = Gtk.Button.new_from_icon_name("camera-photo", Gtk.IconSize.BUTTON)
+        screenshot_button.set_tooltip_text("Take Screenshot")
+        screenshot_button.connect("clicked", self.on_take_screenshot)
+        header_bar.pack_end(screenshot_button)
+
+        self.add_bookmark_buttons(header_bar)
+
+        save_tabs_button = Gtk.Button.new_from_icon_name("document-save", Gtk.IconSize.BUTTON)
+        save_tabs_button.set_tooltip_text("Save Current Tabs")
+        save_tabs_button.connect("clicked", self.on_save_tabs)
+        header_bar.pack_end(save_tabs_button)
+
+        clear_tabs_button = Gtk.Button.new_from_icon_name("edit-delete", Gtk.IconSize.BUTTON)
+        clear_tabs_button.set_tooltip_text("Clear Saved Tabs")
+        clear_tabs_button.connect("clicked", self.on_clear_saved_tabs)
+        header_bar.pack_end(clear_tabs_button)
+
+        self.switch_tabs_icon = Gtk.Image.new_from_icon_name("go-down-symbolic", Gtk.IconSize.BUTTON)
+        self.switch_tabs_button = Gtk.Button()
+        self.switch_tabs_button.set_image(self.switch_tabs_icon)
+        self.switch_tabs_button.set_tooltip_text("Toggle Tabs Position")
+        self.switch_tabs_button.connect("clicked", self.toggle_tab_position)
+        header_bar.pack_end(self.switch_tabs_button)
+
+        # Initialize bookmarks
+        self.bookmarks = []
+        self.bookmarks_file = os.path.join(os.path.expanduser('~'), '.simple_browser', 'bookmarks.json')
+        self.load_bookmarks()
+
+        self.homepage = "https://www.duckduckgo.com"
+
+        # Load saved tabs or open a new one
+        tabs_loaded = self.load_open_tabs()
+        if tabs_loaded == 0:
+            self.on_new_tab_with_url(self.homepage)
+
+
+
+
+    def save_session(self, session_name):
+        """Save the current tabs to the specified session file."""
+        tabs = []
+        for i in range(self.notebook.get_n_pages()):
+            page = self.notebook.get_nth_page(i)
+            if isinstance(page, BrowserTab):
+                uri = page.webview.get_uri()
+                if uri:
+                    tabs.append(uri)
+
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        os.makedirs(saved_tabs_dir, exist_ok=True)
+        file_path = os.path.join(saved_tabs_dir, f"{session_name}.json")
+
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(tabs, f, indent=4)
+            logger.info(f"Session '{session_name}' saved successfully: {tabs}")
+        except Exception as e:
+            logger.error(f"Failed to save session '{session_name}': {e}")
+
+    def load_session(self, session_name):
+        """Load tabs from the specified session file."""
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        file_path = os.path.join(saved_tabs_dir, f"{session_name}.json")
+
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as f:
+                    urls = json.load(f)
+                    if urls:
+                        self.clear_all_tabs()
+                        for url in urls:
+                            self.on_new_tab_with_url(url)
+                        logger.info(f"Loaded session '{session_name}' with tabs: {urls}")
+                    else:
+                        logger.info(f"Session '{session_name}' is empty.")
+            except json.JSONDecodeError:
+                logger.error(f"Session '{session_name}' contains invalid JSON.")
+            except Exception as e:
+                logger.error(f"Failed to load session '{session_name}': {e}")
+        else:
+            logger.info(f"Session file '{file_path}' not found.")
+
+    def clear_all_tabs(self):
+        """Close all open tabs."""
+        while self.notebook.get_n_pages() > 0:
+            page = self.notebook.get_nth_page(0)
+            if isinstance(page, BrowserTab):
+                self.notebook.remove(page)
+                page.webview.destroy()
+                page.destroy()
+
+
+
+
+
+
+
+
+    def add_session_buttons(self, header_bar):
+        """Add buttons to save session 1 and session 2."""
+        save_session1_button = Gtk.Button(label="S1")
+        save_session1_button.connect("clicked", lambda w: self.save_session("session1"))
+        header_bar.pack_end(save_session1_button)
+
+        save_session2_button = Gtk.Button(label="S2")
+        save_session2_button.connect("clicked", lambda w: self.save_session("session2"))
+        header_bar.pack_end(save_session2_button)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def load_declined_sites(self):
+        """Load declined sites from a file."""
+        if os.path.exists(self.DECLINED_SITES_FILE):
+            with open(self.DECLINED_SITES_FILE, 'r') as f:
+                return json.load(f)
+        return []
+
+
+    def save_declined_sites(self):
+        """Save declined sites to a file."""
+        with open(self.DECLINED_SITES_FILE, 'w') as f:
+            json.dump(self.declined_sites, f)
+
+
+    def remove_content_blockers(self):
+        """Remove all user content filters (content blockers) from the WebContext."""
+        try:
+            # Check if the method 'remove_all_user_content_filters' exists in the current WebKitGTK version
+            if hasattr(self.web_context, 'remove_all_user_content_filters'):
+                self.web_context.remove_all_user_content_filters()
+                logger.info("All user content filters removed successfully.")
+            else:
+                logger.warning("Method 'remove_all_user_content_filters' is not available in this version of WebKitGTK.")
+        except Exception as e:
+            logger.error(f"Failed to remove content blockers: {e}")
+
+
+
+
+
+    def play_video_with_mpv(self, url):
+        """Play the given video URL using MPV."""
+        logger.info(f"Playing video with MPV: {url}")
+        self.mpv_player.play(url)
+
+    def setup_cookie_manager(self):
+        cookie_manager = self.web_context.get_cookie_manager()
+        cookie_manager.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
+        logger.info("Cookies are accepted to improve site compatibility.")
+        
+
+    def on_destroy(self, widget):
+        """Handle application exit."""
+        self.save_cookies_to_file()
+        logger.info("Exiting application and saving cookies.")
+        Gtk.main_quit()
+
+
+    def on_mpv_idle(self, idle):
+        if idle:
+            logger.info("MPV playback finished.")
+
+    def play_video_with_mpv(self, url):
+        """Play the given video URL using MPV."""
+        logger.info(f"Playing video with MPV: {url}")
+        try:
+            self.mpv_player.play(url)
+            self.mpv_player.wait_for_playback()  # Block until the video finishes playing
+        except Exception as e:
+            logger.error(f"Failed to play video with MPV: {e}")
+
+
+    def get_cookies_file_path(self):
+        # Resolve path to user's Documents directory
+        return os.path.join(os.path.expanduser("~/Documents"), "saved_cookies.json")
+
+    def save_cookies_to_file(self):
+        cookies_file_path = self.get_cookies_file_path()
+        cookie_manager = self.web_context.get_cookie_manager()
+
+        def save_cookies_callback(manager, result):
+            try:
+                cookies = manager.get_cookies_finish(result)
+                cookies_list = [
+                    {
+                        "name": cookie.get_name(),
+                        "value": cookie.get_value(),
+                        "domain": cookie.get_domain(),
+                        "path": cookie.get_path(),
+                        "expires": cookie.get_expires(),
+                        "http_only": cookie.is_http_only(),
+                        "secure": cookie.is_secure(),
+                    }
+                    for cookie in cookies
+                ]
+
+                # Ensure the directory exists
+                os.makedirs(os.path.dirname(cookies_file_path), exist_ok=True)
+
+                with open(cookies_file_path, 'w') as f:
+                    json.dump(cookies_list, f, indent=4)
+                logger.info(f"Cookies saved successfully to {cookies_file_path}")
+
+            except Exception as e:
+                logger.error(f"Failed to save cookies: {e}")
+
+        # Get cookies for all open tabs
+        for i in range(self.notebook.get_n_pages()):
+            page = self.notebook.get_nth_page(i)
+            if isinstance(page, BrowserTab) and page.current_uri:
+                cookie_manager.get_cookies_for_uri_async(page.current_uri, None, save_cookies_callback)
+
+
+
+
+    def load_cookies_from_file(self):
+        cookies_file_path = self.get_cookies_file_path()
+
+        if os.path.exists(cookies_file_path):
+            try:
+                with open(cookies_file_path, 'r') as f:
+                    cookies_list = json.load(f)
+
+                cookie_manager = self.web_context.get_cookie_manager()
+                for cookie_dict in cookies_list:
+                    max_age = int(cookie_dict["expires"]) - int(time.time())
+
+                    cookie = WebKit2.Cookie.new(
+                        cookie_dict["name"],
+                        cookie_dict["value"],
+                        cookie_dict["domain"],
+                        cookie_dict["path"],
+                        max_age=max_age
+                    )
+                    if cookie_dict["http_only"]:
+                        cookie.set_http_only(True)
+                    if cookie_dict["secure"]:
+                        cookie.set_secure(True)
+
+                    cookie_manager.add_cookie(cookie, None)
+                logger.info(f"Cookies loaded successfully from {cookies_file_path}")
+
+            except Exception as e:
+                logger.error(f"Failed to load cookies: {e}")
+
+
+
+
+    # ------------------------------
+    # Progress Bar Functions
+    # ------------------------------
+    def update_progress(self, progress):
+        """Update the progress bar based on page load progress."""
+        self.progress_bar.set_fraction(progress / 100.0)
+        self.progress_bar.set_text(f"{progress:.0f}%")
+        if progress >= 100:
+            self.progress_bar.set_visible(False)
+        else:
+            self.progress_bar.set_visible(True)
+        logger.debug(f"Progress bar updated to: {progress}%")
+
+    # ------------------------------
+    # Download Manager UI Functions
+    # ------------------------------
+    def create_download_manager_window(self):
+        self.download_manager_window = Gtk.Window(title="Download Manager")
+        self.download_manager_window.set_default_size(800, 300)
+
+        self.downloads_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.downloads_box.set_margin_top(10)
+        self.downloads_box.set_margin_bottom(10)
+        self.downloads_box.set_margin_start(10)
+        self.downloads_box.set_margin_end(10)
+
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window.add(self.downloads_box)
+
+        self.download_manager_window.add(scrolled_window)
+        self.download_manager_window.hide()
+
+
+
+
+    def style_download_progress_bar(self, progress_bar):
+        """Apply custom CSS to the progress bar."""
+        css = """
+        progressbar trough {
+            background-color: yellow;  /* Change background to yellow */
+        }
+        progressbar progress {
+            background-color: yellow;  /* Keep progress indicator yellow */
+        }
+        """
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css.encode('utf-8'))
+        context = progress_bar.get_style_context()
+        context.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
+    def update_download_progress_ui(self, download):
+        """Update the UI with the latest download progress."""
+        if 'progress_bar' in download:
+            download['progress_bar'].set_fraction(download['progress'] / 100.0)
+            download['progress_bar'].set_text(f"{download['progress']}%")
+
+        if 'label_widget' in download:
+            download['label_widget'].set_text(download['status'])
+
+        # Update the time label if the download is still in progress or completed
+        if 'time_label' in download:
+            if download['status'] == 'Downloading':
+                # Calculate elapsed time
+                start_time = datetime.datetime.fromisoformat(download['start_time'])
+                elapsed_time = datetime.datetime.now() - start_time
+                download['time_label'].set_text(f"Elapsed: {str(elapsed_time).split('.')[0]}")
+            elif download['status'] == 'Completed':
+                # Show completion time
+                end_time = datetime.datetime.fromisoformat(download['end_time'])
+                download['time_label'].set_text(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            elif download['status'] == 'Failed':
+                download['time_label'].set_text("Download Failed")
+
+        return False
+
+    def mark_download_complete(self, download):
+        """Update the UI to reflect that a download is complete."""
+        if 'progress_bar' in download and download['progress_bar']:
+            download['progress_bar'].set_fraction(1.0)
+            download['progress_bar'].set_text("Completed")
+            if 'label_widget' in download and download['label_widget']:
+                download['label_widget'].set_text("Completed")
+        return False
+
+    def mark_download_failed(self, download):
+        """Update the UI to reflect that a download has failed."""
+        if 'progress_bar' in download and download['progress_bar']:
+            download['progress_bar'].set_text("Failed")
+            if 'label_widget' in download and download['label_widget']:
+                download['label_widget'].set_text("Failed")
+        return False
+
+    def complete_download(self, filepath, end_time, duration):
+        """Handle download completion and update UI."""
+        for download in self.download_manager.downloads:
+            if download['filepath'] == filepath:
+                download['progress'] = 100
+                download['status'] = 'Completed'
+                download['end_time'] = end_time
+                download['duration'] = duration
+                self.mark_download_complete(download)
+                self.download_manager.save_download_history()
+                break
+        return False
+
+    def fail_download(self, filepath):
+        """Handle download failure and update UI."""
+        for download in self.download_manager.downloads:
+            if download['filepath'] == filepath:
+                download['status'] = 'Failed'
+                self.mark_download_failed(download)
+                break
+        return False
+
+    # ------------------------------
+    # Bookmark Management
+    # ------------------------------
+    def add_bookmark_buttons(self, header_bar):
+        """Add buttons related to bookmarks in the header bar."""
+        bookmark_button = Gtk.Button.new_from_icon_name("bookmark-new", Gtk.IconSize.BUTTON)
+        bookmark_button.set_tooltip_text("Bookmark this page")
+        bookmark_button.connect("clicked", self.on_add_bookmark)
+        header_bar.pack_end(bookmark_button)
+
+        view_bookmarks_button = Gtk.Button.new_from_icon_name("emblem-favorite", Gtk.IconSize.BUTTON)
+        view_bookmarks_button.set_tooltip_text("View Bookmarks")
+        view_bookmarks_button.connect("clicked", self.on_view_bookmarks)
+        header_bar.pack_end(view_bookmarks_button)
+
+    def on_add_bookmark(self, widget):
+        """Add the current page as a bookmark."""
+        current_page = self.get_current_page()
+        if not current_page:
+            logger.warning("No page open to bookmark.")
+            return
+
+        uri = current_page.webview.get_uri()
+        default_name = current_page.webview.get_title() or 'Untitled'
+
+        dialog = Gtk.Dialog(
+            title="Add Bookmark",
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True
+        )
+        dialog.set_default_size(400, 150)
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_ADD, Gtk.ResponseType.OK
+        )
+
+        content_area = dialog.get_content_area()
+
+        name_label = Gtk.Label(label="Enter bookmark name:")
+        name_label.set_xalign(0)
+        content_area.pack_start(name_label, False, False, 5)
+
+        name_entry = Gtk.Entry()
+        name_entry.set_text(default_name)
+        name_entry.set_activates_default(True)
+        content_area.pack_start(name_entry, False, False, 5)
+
+        url_label = Gtk.Label(label=f"URL: {uri}")
+        url_label.set_xalign(0)
+        url_label.set_selectable(True)
+        url_label.set_line_wrap(True)
+        content_area.pack_start(url_label, True, True, 5)
+
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            name = name_entry.get_text().strip()
+            if name and uri:
+                self.bookmarks.append({'name': name, 'uri': uri})
+                self.save_bookmarks()
+                logger.info(f"Added bookmark: {name} -> {uri}")
+            else:
+                logger.warning("Bookmark not added due to missing name or URI.")
+
+        dialog.destroy()
+
+    def on_view_bookmarks(self, widget):
+        """Display the bookmarks in a dialog."""
+        dialog = Gtk.Dialog(
+            title="Bookmarks",
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True
+        )
+        dialog.set_default_size(800, 400)
+        dialog.add_buttons(Gtk.STOCK_CLOSE, Gtk.ResponseType.CLOSE)
+
+        content_area = dialog.get_content_area()
+
+        search_entry = Gtk.Entry()
+        search_entry.set_placeholder_text("Search bookmarks...")
+        content_area.pack_start(search_entry, False, False, 0)
+
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        content_area.pack_start(scrolled_window, True, True, 0)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        scrolled_window.add(vbox)
+
+        bookmark_widgets = []
+
+        def update_bookmark_list():
+            query = search_entry.get_text().lower().strip()
+            for checkbox, label, bookmark in bookmark_widgets:
+                if query in bookmark['name'].lower() or query in bookmark['uri'].lower():
+                    checkbox.show()
+                    label.show()
+                else:
+                    checkbox.hide()
+                    label.hide()
+
+        for bookmark in self.bookmarks:
+            hbox = Gtk.Box(spacing=6)
+
+            checkbox = Gtk.CheckButton()
+            hbox.pack_start(checkbox, False, False, 0)
+
+            bookmark_label = Gtk.Label(label=f"{bookmark['name']} ({bookmark['uri']})")
+            bookmark_label.set_xalign(0)
+            bookmark_label.set_hexpand(True)
+            bookmark_label.set_ellipsize(Pango.EllipsizeMode.END)
+            bookmark_label.set_selectable(True)
+            bookmark_label.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+
+            bookmark_label.connect("button-press-event", self.on_bookmark_open, bookmark['uri'], dialog)
+
+            remove_button = Gtk.Button.new_from_icon_name("edit-delete", Gtk.IconSize.BUTTON)
+            remove_button.set_tooltip_text("Remove Bookmark")
+            remove_button.connect("clicked", self.on_remove_bookmark, dialog, bookmark)
+
+            hbox.pack_start(bookmark_label, True, True, 0)
+            hbox.pack_start(remove_button, False, False, 0)
+            vbox.pack_start(hbox, False, False, 0)
+
+            bookmark_widgets.append((checkbox, bookmark_label, bookmark))
+
+        search_entry.connect("changed", lambda entry: update_bookmark_list())
+
+        vbox_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        content_area.pack_start(vbox_buttons, False, False, 0)
+
+        open_selected_button = Gtk.Button(label="Open Selected")
+        open_selected_button.connect("clicked", self.open_selected_bookmarks, bookmark_widgets)
+        vbox_buttons.pack_start(open_selected_button, True, True, 0)
+
+        dialog.show_all()
+        response = dialog.run()
+        if response == Gtk.ResponseType.CLOSE:
+            dialog.destroy()
+            logger.info("Bookmarks dialog closed.")
+
+    def on_bookmark_open(self, widget, event, uri, dialog):
+        """Handle opening a bookmark when clicked."""
+        if event.button == 1:  # Left-click
+            self.open_bookmark_in_current_tab(uri)
+            logger.info(f"Opened bookmark in current tab: {uri}")
+            dialog.response(Gtk.ResponseType.CLOSE)
+
+    def open_selected_bookmarks(self, button, bookmark_widgets):
+        """Open all selected bookmarks in new tabs."""
+        for checkbox, label, bookmark in bookmark_widgets:
+            if checkbox.get_active():
+                uri = bookmark['uri']
+                self.on_new_tab_with_url(uri)
+                logger.info(f"Opened bookmark: {uri}")
+
+    def on_remove_bookmark(self, widget, dialog, bookmark):
+        """Remove a bookmark."""
+        if bookmark in self.bookmarks:
+            self.bookmarks.remove(bookmark)
+            self.save_bookmarks()
+            logger.info(f"Removed bookmark: {bookmark}")
+            dialog.hide()
+            self.on_view_bookmarks(None)
+
+    def save_bookmarks(self):
+        """Save bookmarks to a JSON file."""
+        try:
+            os.makedirs(os.path.dirname(self.bookmarks_file), exist_ok=True)
+            with open(self.bookmarks_file, 'w') as f:
+                json.dump(self.bookmarks, f, indent=4)
+            logger.info("Bookmarks saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save bookmarks: {e}")
+
+    def load_bookmarks(self):
+        """Load bookmarks from a JSON file."""
+        if os.path.exists(self.bookmarks_file):
+            try:
+                with open(self.bookmarks_file, 'r') as f:
+                    self.bookmarks = json.load(f)
+                logger.info("Bookmarks loaded successfully.")
+            except Exception as e:
+                logger.error(f"Failed to load bookmarks: {e}")
+        else:
+            self.bookmarks = []
+            logger.info("No bookmarks file found. Starting with empty bookmarks.")
+
+    def on_bookmark_activated(self, button, bookmark_url):
+        """Callback for when a bookmark is clicked."""
+        self.open_bookmark_in_current_tab(bookmark_url)
+
+    # ------------------------------
+    # Ad-Blocking Functions
+    # ------------------------------
+    def add_adblock_toggle(self, header_bar):
+        """Add a toggle button for ad-blocking."""
+        self.adblock_toggle = Gtk.ToggleButton()
+        self.adblock_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        self.adblock_toggle.set_focus_on_click(False)
+
+        self.adblock_icon_active = "face-surprise-symbolic"
+        self.adblock_icon_inactive = "face-angel-symbolic"
+
+        self.adblock_image = Gtk.Image.new_from_icon_name(
+            self.adblock_icon_active if self.settings_manager.is_ad_blocking_enabled() else self.adblock_icon_inactive,
+            Gtk.IconSize.BUTTON
+        )
+        self.adblock_toggle.set_image(self.adblock_image)
+
+        self.adblock_toggle.set_active(self.settings_manager.is_ad_blocking_enabled())
+        self.adblock_toggle.connect("toggled", self.on_adblock_toggle)
+
+        header_bar.pack_end(self.adblock_toggle)
+
+    def on_adblock_toggle(self, toggle_button):
+        """Handle adblock toggle button."""
+        enabled = toggle_button.get_active()
+        self.settings_manager.set_ad_blocking_enabled(False)
+
+        if enabled:
+            self.setup_content_blocking()
+            logger.info("Ad blocking enabled.")
+        else:
+            self.remove_content_blocking()
+            logger.info("Ad blocking disabled.")
+
+        self.reload_all_tabs_with_cache_bypass()
+        self.update_adblock_icon()
+
+    def setup_content_blocking(self):
+        """Setup content blocking rules."""
+        if not self.settings_manager.is_ad_blocking_enabled():
+            logger.info("Ad blocking is disabled in settings.")
+            return
+
+        easylist_path = os.path.join(os.path.expanduser('~'), '.simple_browser', 'easylist.txt')
+        if not os.path.exists(easylist_path) or (datetime.datetime.now().timestamp() - os.path.getmtime(easylist_path)) > 86400:
+            self.download_easylist(easylist_path)
+
+        rules = self.parse_easylist(easylist_path)
+        self.apply_content_blocking_rules(rules)
+
+    def remove_content_blocking(self):
+        """Remove all content blocking rules."""
+        logger.info("Removing content blocking.")
+        try:
+            self.web_context.remove_all_user_content_filters()
+            logger.info("All content blockers removed.")
+        except Exception as e:
+            logger.error(f"Failed to remove content blockers: {e}")
+
+    def apply_content_blocking_rules(self, rules):
+        """Apply content blocking rules to the WebKit2 context."""
+        try:
+            if hasattr(self.web_context, 'set_content_blockers'):
+                content_blocker_rules = json.dumps(rules)
+                self.web_context.set_content_blockers(content_blocker_rules)
+                logger.info("Content blocking rules applied.")
+            else:
+                logger.warning("WebContext does not support direct content blockers in this environment.")
+        except Exception as e:
+            logger.error(f"Error applying content blockers: {e}")
+
+    def reload_all_tabs_with_cache_bypass(self):
+        """Reload all tabs to ensure content blocker status is fresh."""
+        logger.info("Reloading all tabs with cache bypass to apply content blocking changes.")
+        for i in range(self.notebook.get_n_pages()):
+            page = self.notebook.get_nth_page(i)
+            if isinstance(page, BrowserTab):
+                page.webview.reload()
+
+    def update_adblock_icon(self):
+        """Update the adblock toggle button icon based on its state."""
+        if self.settings_manager.is_ad_blocking_enabled():
+            self.adblock_image.set_from_icon_name("face-surprise-symbolic", Gtk.IconSize.BUTTON)
+        else:
+            self.adblock_image.set_from_icon_name("face-angel-symbolic", Gtk.IconSize.BUTTON)
+
+    def download_easylist(self, destination):
+        """Download EasyList rules for ad-blocking."""
+        easylist_url = 'https://easylist.to/easylist/easylist.txt'
+        try:
+            response = requests.get(easylist_url)
+            response.raise_for_status()
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with open(destination, 'w') as f:
+                f.write(response.text)
+            logger.info(f"EasyList downloaded and saved to {destination}.")
+        except Exception as e:
+            logger.error(f"Failed to download EasyList: {e}")
+
+    def parse_easylist(self, easylist_path):
+        """Parse EasyList and convert it to WebKit content blocking rules."""
+        rules = []
+        try:
+            with open(easylist_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('!') or not line or line.startswith('[Segment]'):
+                        continue
+                    match = re.match(r'^\|\|([^\^*]+)\^', line)
+                    if match:
+                        domain = match.group(1)
+                        rule = {
+                            "trigger": {
+                                "url-filter": f".*://{re.escape(domain)}.*"
+                            },
+                            "action": {
+                                "type": "block"
+                            }
+                        }
+                        rules.append(rule)
+        except Exception as e:
+            logger.error(f"Error parsing EasyList: {e}")
+        return rules
+
+    # ------------------------------
+    # Whitelist Management
+    # ------------------------------
+    def add_whitelist_manager_button(self, header_bar):
+        """Add a button to manage the whitelist."""
+        whitelist_button = Gtk.Button.new_from_icon_name("emblem-symbolic", Gtk.IconSize.BUTTON)
+        whitelist_button.set_tooltip_text("Manage Whitelist")
+        whitelist_button.set_relief(Gtk.ReliefStyle.NONE)
+        whitelist_button.set_focus_on_click(False)
+        whitelist_button.connect("clicked", self.on_manage_whitelist)
+        header_bar.pack_end(whitelist_button)
+
+    def on_manage_whitelist(self, widget):
+        """Open the whitelist manager dialog."""
+        dialog = Gtk.Dialog(
+            title="Whitelist Manager",
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True
+        )
+        dialog.set_default_size(400, 300)
+        dialog.add_buttons(
+            Gtk.STOCK_CLOSE, Gtk.ResponseType.CLOSE
+        )
+
+        content_area = dialog.get_content_area()
+
+        self.whitelist_liststore = Gtk.ListStore(str)
+        for domain in self.settings_manager.get_whitelist():
+            self.whitelist_liststore.append([domain])
+
+        treeview = Gtk.TreeView(model=self.whitelist_liststore)
+
+        renderer_text = Gtk.CellRendererText()
+        column_text = Gtk.TreeViewColumn("Whitelisted Domains", renderer_text, text=0)
+        treeview.append_column(column_text)
+
+        renderer_toggle = Gtk.CellRendererToggle()
+        renderer_toggle.connect("toggled", self.on_whitelist_toggle, self.whitelist_liststore)
+        column_toggle = Gtk.TreeViewColumn("Remove", renderer_toggle, active=0)
+        treeview.append_column(column_toggle)
+
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window.add(treeview)
+        content_area.pack_start(scrolled_window, True, True, 10)
+
+        add_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        add_entry = Gtk.Entry()
+        add_entry.set_placeholder_text("Enter domain to whitelist (e.g., example.com)")
+        add_box.pack_start(add_entry, True, True, 0)
+
+        add_button = Gtk.Button(label="Add")
+        add_button.connect("clicked", self.on_add_whitelist_domain, add_entry, dialog)
+        add_box.pack_start(add_button, False, False, 0)
+
+        content_area.pack_start(add_box, False, False, 10)
+
+        dialog.show_all()
+        dialog.run()
+        dialog.destroy()
+
+    def on_whitelist_toggle(self, widget, path, liststore):
+        """Handle the removal of a domain from the whitelist."""
+        domain = self.whitelist_liststore[path][0]
+        self.settings_manager.remove_from_whitelist(domain)
+        self.whitelist_liststore.remove(self.whitelist_liststore.get_iter(path))
+        self.setup_content_blocking()
+
+    def on_add_whitelist_domain(self, button, add_entry, dialog):
+        """Add a new domain to the whitelist."""
+        domain = add_entry.get_text().strip()
+        if domain:
+            parsed = urlparse(f"http://{domain}")
+            clean_domain = parsed.netloc
+            if clean_domain and clean_domain not in self.settings_manager.get_whitelist():
+                self.settings_manager.add_to_whitelist(clean_domain)
+                self.whitelist_liststore.append([clean_domain])
+                add_entry.set_text("")
+                logger.info(f"Added {clean_domain} to whitelist.")
+                self.setup_content_blocking()
+            else:
+                self.show_error_dialog("Invalid or duplicate domain.")
+        else:
+            self.show_error_dialog("Please enter a domain.")
+
+    def show_error_dialog(self, message):
+        """Display an error dialog with the given message."""
+        error_dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text="Error",
+        )
+        error_dialog.format_secondary_text(message)
+        error_dialog.run()
+        error_dialog.destroy()
+
+    # ------------------------------
+    # Adblock Toggle and CSS
+    # ------------------------------
+    # (Already implemented in add_adblock_toggle and related functions)
+
+    # ------------------------------
+    # About Us Dialog
+    # ------------------------------
+    def on_about_us(self, widget):
+        """Display the About Us dialog with updated keyboard shortcuts."""
+        about_dialog = Gtk.MessageDialog(
+            parent=self,
+            modal=True,
+            destroy_with_parent=True,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.CLOSE,
+            text="About Us"
+        )
+        about_dialog.set_markup("<b>About Us</b>")
+        description = (
+            "Simple Browser - Version 7a\n\n"
+            "Keyboard Shortcuts:\n"
+            "- Ctrl + T: New Tab\n"
+            "- Ctrl + W: Close Tab\n"
+            "- Ctrl + R: Reload Page\n"
+            "- Ctrl + O: Open URL\n"
+            "- Ctrl + B: Add Bookmark\n"
+            "- Ctrl + Shift + B: View Bookmarks\n"
+            "- Ctrl + K: About Us\n"
+            "- Ctrl + Q: Quit Browser\n"
+            "- Shift + ISO_Left_Tab: Switch to Previous Tab\n"
+            "- Ctrl + Alt + Down: Move Tabs to Bottom\n"
+            "- Ctrl + Alt + Up: Move Tabs to Top\n"
+            "- Ctrl + Left: Go Back\n"
+            "- Ctrl + Right: Go Forward\n"
+            "- Ctrl + S: Take Screenshot\n\n"
+            "Credits:\n"
+            "Created by Seeker\n"
+            "Special thanks to Johnathan and Jacob and especially Fish"
+        )
+        about_dialog.format_secondary_text(description)
+        about_dialog.run()
+        about_dialog.destroy()
+
+
+    # ------------------------------
+    # Download Manager Functions
+    # ------------------------------
+    def open_download_manager(self, widget):
+        """Open the download manager window."""
+        self.download_manager.download_manager_window.show_all()
+
+    def update_download_progress_ui(self, download):
+        """Update the UI with the latest download progress."""
+        if 'progress_bar' in download:
+            download['progress_bar'].set_fraction(download['progress'] / 100.0)
+            download['progress_bar'].set_text(f"{download['progress']}%")
+
+        if 'label_widget' in download:
+            download['label_widget'].set_text(download['status'])
+
+        # Update the time label if the download is still in progress or completed
+        if 'time_label' in download:
+            if download['status'] == 'Downloading':
+                # Calculate elapsed time
+                start_time = datetime.datetime.fromisoformat(download['start_time'])
+                elapsed_time = datetime.datetime.now() - start_time
+                download['time_label'].set_text(f"Elapsed: {str(elapsed_time).split('.')[0]}")
+            elif download['status'] == 'Completed':
+                # Show completion time
+                end_time = datetime.datetime.fromisoformat(download['end_time'])
+                download['time_label'].set_text(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            elif download['status'] == 'Failed':
+                download['time_label'].set_text("Download Failed")
+
+        return False
+
+    def mark_download_complete(self, download):
+        """Update the UI to reflect that a download is complete."""
+        if 'progress_bar' in download and download['progress_bar']:
+            download['progress_bar'].set_fraction(1.0)
+            download['progress_bar'].set_text("Completed")
+            if 'label_widget' in download and download['label_widget']:
+                download['label_widget'].set_text("Completed")
+        return False
+
+    def mark_download_failed(self, download):
+        """Update the UI to reflect that a download has failed."""
+        if 'progress_bar' in download and download['progress_bar']:
+            download['progress_bar'].set_text("Failed")
+            if 'label_widget' in download and download['label_widget']:
+                download['label_widget'].set_text("Failed")
+        return False
+
+    def complete_download(self, filepath, end_time, duration):
+        """Handle download completion and update UI."""
+        for download in self.download_manager.downloads:
+            if download['filepath'] == filepath:
+                download['progress'] = 100
+                download['status'] = 'Completed'
+                download['end_time'] = end_time
+                download['duration'] = duration
+                self.mark_download_complete(download)
+                self.download_manager.save_download_history()
+                break
+        return False
+
+    def fail_download(self, filepath):
+        """Handle download failure and update UI."""
+        for download in self.download_manager.downloads:
+            if download['filepath'] == filepath:
+                download['status'] = 'Failed'
+                self.mark_download_failed(download)
+                break
+        return False
+
+    # ------------------------------
+    # Printing Functions
+    # ------------------------------
+    def on_print_page(self, widget):
+        """Initiate print dialog for the current page."""
+        current_page = self.get_current_page()
+        if current_page:
+            print_dialog = Gtk.PrintOperation.new()
+            print_dialog.set_default_page_setup(Gtk.PrintSettings())
+            print_dialog.set_n_pages(1)
+
+            print_dialog.connect("begin-print", self.begin_print)
+            print_dialog.connect("draw-page", self.draw_page)
+
+            res = print_dialog.run(Gtk.PrintOperationAction.PRINT_DIALOG, self)
+            if res == Gtk.PrintOperationResult.ERROR:
+                logger.error("An error occurred while printing.")
+        else:
+            logger.warning("Print button clicked but no tab is open.")
+
+    def begin_print(self, operation, context):
+        """Prepare for printing."""
+        pass  # Additional setup can be done here
+
+    def draw_page(self, operation, context, page_nr):
+        """Render the current page for printing."""
+        # Note: Implement actual print rendering as needed
+        pass
+
+    # ------------------------------
+    # Screenshot Functions
+    # ------------------------------
+    def on_take_screenshot(self, widget):
+        """Capture a screenshot of the current page and copy it to clipboard."""
+        current_page = self.get_current_page()
+        if current_page is None:
+            logger.warning("No active page to capture.")
+            return
+
+        webview = current_page.webview
+        allocation = webview.get_allocation()
+        width = allocation.width
+        height = allocation.height
+
+        webview.get_snapshot(WebKit2.SnapshotRegion.FULL_DOCUMENT, WebKit2.SnapshotOptions.NONE, None, self.on_snapshot_ready, (width, height))
+
+    def on_snapshot_ready(self, webview, result, data):
+        """Handle the snapshot after it's ready."""
+        try:
+            surface = webview.get_snapshot_finish(result)
+            width, height = data
+            pixbuf = Gdk.pixbuf_get_from_surface(surface, 0, 0, width, height)
+            clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+            clipboard.set_image(pixbuf)
+            logger.info("Screenshot taken of visible content and copied to clipboard.")
+        except Exception as e:
+            logger.error(f"Failed to capture screenshot: {e}")
+
+    # ------------------------------
+    # Bookmark Opening Functions
+    # ------------------------------
+    def open_bookmark_in_current_tab(self, bookmark_url):
+        """Open a bookmark URL in the current tab."""
+        current_page = self.get_current_page()
+        if isinstance(current_page, BrowserTab):
+            current_page.webview.load_uri(bookmark_url)
+            self.update_address_bar(bookmark_url)
+            logger.info(f"Bookmark loaded in current tab: {bookmark_url}")
+        else:
+            logger.warning("No active tab found to load the bookmark.")
+
+    def on_bookmark_activated(self, button, bookmark_url):
+        """Callback for when a bookmark is clicked."""
+        self.open_bookmark_in_current_tab(bookmark_url)
+
+    # ------------------------------
+    # Tab Management Functions
+    # ------------------------------
+    def on_new_tab(self, widget=None):
+        """Open a new tab."""
+        new_tab = BrowserTab(self, ad_block_rules=self.settings_manager.get_whitelist())
+        self.notebook.set_current_page(self.notebook.page_num(new_tab))
+        logger.info("New tab opened.")
+
+    def on_close_tab(self, widget=None, tab=None):
+        """Close the specified tab."""
+        if tab is None:
+            current_page_num = self.notebook.get_current_page()
+            tab = self.notebook.get_nth_page(current_page_num)
+
+        total_pages = self.notebook.get_n_pages()
+
+        if total_pages <= 1:
+            self.destroy()
+            logger.info("Last tab closed. Application window destroyed.")
+        else:
+            if isinstance(tab, BrowserTab):
+                self.notebook.remove(tab)
+                tab.webview.destroy()
+                tab.destroy()
+                logger.info("Tab closed.")
+            else:
+                logger.error("Attempted to close a non-BrowserTab instance.")
+
+    def switch_to_previous_tab(self):
+        current_page_num = self.notebook.get_current_page()
+        total_pages = self.notebook.get_n_pages()
+        if total_pages > 1:
+            previous_page_num = (current_page_num - 1) % total_pages
+            self.notebook.set_current_page(previous_page_num)
+            logger.info(f"Switched to previous tab: {previous_page_num}")
+
+
+
+
+
+    def on_switch_page(self, notebook, page, page_num):
+        """Handle tab switching to update the address bar."""
+        current_page = self.notebook.get_nth_page(page_num)
+        if isinstance(current_page, BrowserTab):
+            uri = current_page.webview.get_uri()
+            if uri is not None:
+                self.update_address_bar(uri)
+                logger.info(f"Switched to tab with URI: {uri}")
+
+    def get_current_page(self):
+        """Return the currently selected tab."""
+        page_num = self.notebook.get_current_page()
+        return self.notebook.get_nth_page(page_num)
+
+    def on_key_press_global(self, widget, event):
+        keyval = event.keyval
+        state = event.state
+
+        # Control Key Shortcuts
+        if state & Gdk.ModifierType.CONTROL_MASK:
+            if keyval == Gdk.KEY_t:
+                self.on_new_tab()
+                return True
+
+            elif keyval == Gdk.KEY_d:
+                self.download_manager.open_download_manager()
+                return True
+
+            elif keyval == Gdk.KEY_w:
+                self.on_close_tab()
+                return True
+
+            elif keyval == Gdk.KEY_r:
+                self.on_reload_clicked(None)
+                return True
+
+            elif keyval == Gdk.KEY_o:
+                self.show_url_launcher()
+                return True
+
+            elif keyval == Gdk.KEY_b:
+                self.on_add_bookmark(None)
+                return True
+
+            elif keyval == Gdk.KEY_n:
+                self.on_new_blank_tab()
+                return True
+
+            elif keyval == Gdk.KEY_q:
+                self.quit_browser()
+                return True
+
+            elif keyval == Gdk.KEY_Left:
+                self.on_back_clicked(None)
+                return True
+
+            elif keyval == Gdk.KEY_Right:
+                self.on_forward_clicked(None)
+                return True
+
+            elif keyval == Gdk.KEY_Up:
+                self.notebook.set_tab_pos(Gtk.PositionType.TOP)
+                self.switch_tabs_icon.set_from_icon_name("go-up-symbolic", Gtk.IconSize.BUTTON)
+                logger.info("Tabs moved to top.")
+                return True
+
+            elif keyval == Gdk.KEY_Down:
+                self.notebook.set_tab_pos(Gtk.PositionType.BOTTOM)
+                self.switch_tabs_icon.set_from_icon_name("go-down-symbolic", Gtk.IconSize.BUTTON)
+                logger.info("Tabs moved to bottom.")
+                return True
+
+        # Shift Key Shortcuts
+        elif state & Gdk.ModifierType.SHIFT_MASK:
+            if keyval == Gdk.KEY_B:
+                self.on_view_bookmarks(None)
+                return True
+
+            elif keyval == Gdk.KEY_ISO_Left_Tab:
+                self.switch_to_previous_tab()
+                return True
+
+            elif keyval == Gdk.KEY_S:
+                self.on_take_screenshot(None)
+                return True
+
+        # Alt Key Shortcuts for Switching Sessions
+        elif state & Gdk.ModifierType.MOD1_MASK:
+            if keyval == Gdk.KEY_1:
+                self.load_session("session1")
+                return True
+
+            elif keyval == Gdk.KEY_2:
+                self.load_session("session2")
+                return True
+
+        # About Us Shortcut
+        elif keyval == Gdk.KEY_k and (state & Gdk.ModifierType.CONTROL_MASK):
+            self.on_about_us(None)
+            return True
+
+        return False
+
+
+    def on_reload_clicked(self, widget):
+        """Reload the current tab."""
+        current_page = self.get_current_page()
+        if current_page:
+            current_page.webview.reload()
+            logger.info("Reload button clicked.")
+        else:
+            logger.warning("Reload button clicked but no tab is open.")
+
+    def on_back_clicked(self, widget):
+        """Navigate back in the current tab."""
+        current_page = self.get_current_page()
+        if current_page and current_page.webview.can_go_back():
+            current_page.webview.go_back()
+            logger.info("Back button clicked.")
+        else:
+            logger.warning("Back button clicked but cannot navigate back.")
+
+    def on_forward_clicked(self, widget):
+        """Navigate forward in the current tab."""
+        current_page = self.get_current_page()
+        if current_page and current_page.webview.can_go_forward():
+            current_page.webview.go_forward()
+            logger.info("Forward button clicked.")
+        else:
+            logger.warning("Forward button clicked but cannot navigate forward.")
+
+    def on_home_clicked(self, widget):
+        """Navigate to the homepage in the current tab."""
+        current_page = self.get_current_page()
+        if current_page:
+            current_page.webview.load_uri(self.homepage)
+            logger.info(f"Navigated to home page: {self.homepage}")
+        else:
+            logger.warning("Home button clicked but no tab is open.")
+
+    def on_key_press(self, widget, event):
+        """Handle key press events in the address bar."""
+        if event.state & Gdk.ModifierType.CONTROL_MASK and event.keyval == Gdk.KEY_Return:
+            self.handle_ctrl_enter()
+            return True
+        return False
+
+    def handle_ctrl_enter(self):
+        """Handle Ctrl+Enter key combination to navigate."""
+        domain = self.address_bar.get_text().strip()
+        domain = self.ensure_tld(domain)
+        url = self.format_url(domain)
+        GLib.idle_add(self.navigate_to, url)
+        logger.info(f"Control+Enter pressed. Navigating to: {url}")
+
+    def navigate_to(self, url):
+        """Navigate to the specified URL in the current tab."""
+        logger.info(f"Navigating to URL: {url}")
+        current_page = self.get_current_page()
+        if current_page:
+            current_page.webview.load_uri(url)
+
+    def on_enter_address(self, entry):
+        """Load the entered URL in the current tab."""
+        raw_input = entry.get_text().strip()
+        current_page = self.get_current_page()
+        if current_page:
+            if self.is_probable_url(raw_input):
+                url = self.format_url(raw_input)
+            else:
+                query = quote_plus(raw_input)
+                url = f"https://www.duckduckgo.com/?q={query}"
+            current_page.webview.load_uri(url)
+            logger.info(f"Navigating to: {url}")
+
+    def is_probable_url(self, text):
+        """Check if the entered text is a probable URL."""
+        return bool(self.PROBABLE_URL_REGEX.match(text))
+
+    def format_url(self, url):
+        """Ensure the URL has a scheme."""
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            return f"https://{url}"
+        return url
+
+    def ensure_tld(self, domain):
+        """Ensure the domain has a top-level domain."""
+        if not domain.startswith("www."):
+            domain = "www." + domain
+        if not any(domain.endswith(tld) for tld in self.TLD_SET):
+            domain += ".com"
+        return domain
+
+    def toggle_tab_position(self, widget):
+        """Toggle the position of the tabs between top and bottom."""
+        current_pos = self.notebook.get_tab_pos()
+        new_pos = Gtk.PositionType.TOP if current_pos == Gtk.PositionType.BOTTOM else Gtk.PositionType.BOTTOM
+        self.notebook.set_tab_pos(new_pos)
+
+        if new_pos == Gtk.PositionType.TOP:
+            self.switch_tabs_icon.set_from_icon_name("go-down-symbolic", Gtk.IconSize.BUTTON)
+        else:
+            self.switch_tabs_icon.set_from_icon_name("go-up-symbolic", Gtk.IconSize.BUTTON)
+
+        logger.info(f"Toggled tabs position to: {'TOP' if new_pos == Gtk.PositionType.TOP else 'BOTTOM'}")
+
+    # ------------------------------
+    # Save and Load Tabs
+    # ------------------------------
+    def on_save_tabs(self, widget):
+        """Save all open tabs to a file."""
+        try:
+            self.save_open_tabs()
+            dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Tabs Saved",
+            )
+            dialog.format_secondary_text("Your open tabs have been saved successfully.")
+            dialog.run()
+            dialog.destroy()
+            logger.info("User manually saved open tabs.")
+        except Exception as e:
+            logger.error(f"Failed to save open tabs: {e}")
+            error_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text="Error Saving Tabs",
+            )
+            error_dialog.format_secondary_text(f"An error occurred while saving your tabs: {e}")
+            error_dialog.run()
+            error_dialog.destroy()
+
+    def save_open_tabs(self):
+        """Save all open tab URLs to a JSON file."""
+        tabs = []
+        for i in range(self.notebook.get_n_pages()):
+            page = self.notebook.get_nth_page(i)
+            if isinstance(page, BrowserTab):
+                uri = page.webview.get_uri()
+                if uri:
+                    tabs.append(uri)
+
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        os.makedirs(saved_tabs_dir, exist_ok=True)
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        logger.debug(f"Saving open tabs to: {file_path}")
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(tabs, f, indent=4)
+            logger.info(f"Open tabs saved successfully: {tabs}")
+        except Exception as e:
+            logger.error(f"Failed to save open tabs: {e}")
+
+    def load_open_tabs(self):
+        """Load saved tabs from a JSON file."""
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        tabs_loaded = 0
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as f:
+                    urls = json.load(f)
+                    if urls:
+                        for url in urls:
+                            self.on_new_tab_with_url(url)
+                            tabs_loaded += 1
+                        logger.info(f"Loaded saved tabs: {urls}")
+                    else:
+                        logger.info("Saved tabs file is empty.")
+            except json.JSONDecodeError:
+                logger.error(f"Saved tabs file {file_path} contains invalid JSON.")
+            except Exception as e:
+                logger.error(f"Failed to load open tabs: {e}")
+        else:
+            logger.info(f"No saved tabs file found at: {file_path}")
+        return tabs_loaded
+
+    def delete_saved_tabs(self):
+        """Delete the saved tabs file."""
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        logger.debug(f"Attempting to delete saved tabs file: {file_path}")
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Successfully deleted saved tabs file: {file_path}")
+                return True
+            else:
+                logger.info(f"No saved tabs file found at: {file_path}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting saved tabs file at {file_path}: {e}")
+            return False
+
+    def on_clear_saved_tabs(self, widget):
+        """Clear all saved tabs and reload the homepage."""
+        success = self.delete_saved_tabs()
+        if success:
+            while self.notebook.get_n_pages() > 0:
+                page = self.notebook.get_nth_page(0)
+                if isinstance(page, BrowserTab):
+                    self.notebook.remove(page)
+                    page.webview.destroy()
+                    page.destroy()
+            self.on_new_tab_with_url(self.homepage)
+            info_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Saved Tabs Deleted",
+            )
+            info_dialog.format_secondary_text("Your saved tabs have been deleted. The default homepage has been loaded.")
+            info_dialog.run()
+            info_dialog.destroy()
+            logger.info("User cleared saved tabs and default homepage loaded.")
+        else:
+            info_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text="No Saved Tabs",
+            )
+            info_dialog.format_secondary_text("There are no saved tabs to delete.")
+            info_dialog.run()
+            info_dialog.destroy()
+            logger.info("User attempted to clear saved tabs, but none existed.")
+
+    # ------------------------------
+    # Quit Functionality
+    # ------------------------------
+    def quit_browser(self):
+        """Quit the browser application."""
+        logger.info("Application closed via shortcut.")
+        self.autofill_manager.save_autofill_data()
+        Gtk.main_quit()
+        sys.exit(0)
+
+    # ------------------------------
+    # Address Bar Update
+    # ------------------------------
+    def update_address_bar(self, uri):
+        """Update the address bar with the current URI."""
+        if uri is not None and self.address_bar.get_text() != uri:
+            self.address_bar.set_text(uri)
+            logger.info(f"Address bar updated to: {uri}")
+
+    # ------------------------------
+    # URL Launcher
+    # ------------------------------
+    def show_url_launcher(self):
+        dialog = Gtk.Dialog(
+            title="Open URL",
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True
+        )
+        dialog.set_default_size(400, 100)
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK
+        )
+
+        content_area = dialog.get_content_area()
+
+        label = Gtk.Label(label="Enter URL or search query:")
+        content_area.pack_start(label, False, False, 10)
+
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Enter URL or search query")
+        entry.connect("activate", self.on_launcher_enter, dialog)
+        entry.connect("key-press-event", self.on_launcher_key_press, dialog)
+        content_area.pack_start(entry, True, True, 0)
+
+        entry.grab_focus()
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            text = entry.get_text().strip()
+            if text:
+                if self.is_probable_url(text):
+                    url = self.format_url(text)
+                else:
+                    query = quote_plus(text)
+                    url = f"https://www.duckduckgo.com/?q={query}"
+                self.on_new_tab()
+                current_page = self.get_current_page()
+                if current_page:
+                    current_page.webview.load_uri(url)
+                    logger.info(f"Navigated to DuckDuckGo search for: {text}")
+        dialog.destroy()
+
+    def on_launcher_key_press(self, widget, event, dialog):
+        if event.state & Gdk.ModifierType.CONTROL_MASK and event.keyval == Gdk.KEY_Return:
+            url = self.ensure_tld(widget.get_text().strip())
+            self.launch_url(url)
+            dialog.response(Gtk.ResponseType.CANCEL)
+            return True
+        return False
+
+    def on_launcher_enter(self, entry, dialog):
+        text = entry.get_text().strip()
+        if text:
+            if self.is_probable_url(text):
+                url = self.format_url(text)
+            else:
+                query = quote_plus(text)
+                url = f"https://www.duckduckgo.com/?q={query}"
+            self.on_new_tab()
+            current_page = self.get_current_page()
+            if current_page:
+                current_page.webview.load_uri(url)
+                logger.info(f"Navigated to URL: {url}")
+        dialog.response(Gtk.ResponseType.CANCEL)
+
+
+    def ensure_tld(self, domain):
+        if not domain.startswith("www."):
+            domain = "www." + domain
+        if not any(domain.endswith(tld) for tld in self.TLD_SET):
+            domain += ".com"
+        return domain
+
+    def launch_url(self, url):
+        url = self.format_url(url)
+        self.on_new_tab()
+        current_page = self.get_current_page()
+        if current_page:
+            current_page.webview.load_uri(url)
+            logger.info(f"Navigated to URL: {url}")
+
+    # ------------------------------
+    # Bookmark Manager Setup
+    # ------------------------------
+    def setup_bookmark_manager(self):
+        """Setup bookmark manager UI elements."""
+        for bookmark in self.bookmarks:
+            bookmark_button = Gtk.Button(label=bookmark['name'])
+            bookmark_button.connect("clicked", self.on_bookmark_activated, bookmark['uri'])
+            # Add to your UI as needed
+
+    # ------------------------------
+    # Handle Tab Switch
+    # ------------------------------
+    def on_switch_page(self, notebook, page, page_num):
+        """Handle tab switching to update the address bar."""
+        current_page = self.notebook.get_nth_page(page_num)
+        if isinstance(current_page, BrowserTab):
+            uri = current_page.webview.get_uri()
+            if uri is not None:
+                self.update_address_bar(uri)
+                logger.info(f"Switched to tab with URI: {uri}")
+
+    # ------------------------------
+    # Add Navigation Buttons
+    # ------------------------------
+    def add_navigation_buttons(self, header_bar):
+        """Add back, forward, reload, and home buttons to the header bar."""
+        back_button = Gtk.Button.new_from_icon_name("go-previous", Gtk.IconSize.BUTTON)
+        back_button.set_tooltip_text("Back")
+        back_button.connect("clicked", self.on_back_clicked)
+        header_bar.pack_start(back_button)
+
+        forward_button = Gtk.Button.new_from_icon_name("go-next", Gtk.IconSize.BUTTON)
+        forward_button.set_tooltip_text("Forward")
+        forward_button.connect("clicked", self.on_forward_clicked)
+        header_bar.pack_start(forward_button)
+
+        reload_button = Gtk.Button.new_from_icon_name("view-refresh", Gtk.IconSize.BUTTON)
+        reload_button.set_tooltip_text("Reload")
+        reload_button.connect("clicked", self.on_reload_clicked)
+        header_bar.pack_start(reload_button)
+
+        home_button = Gtk.Button.new_from_icon_name("go-home", Gtk.IconSize.BUTTON)
+        home_button.set_tooltip_text("Home")
+        home_button.connect("clicked", self.on_home_clicked)
+        header_bar.pack_start(home_button)
+
+    # ------------------------------
+    # Keyboard Shortcuts
+    # ------------------------------
+    # (Already implemented in on_key_press_global)
+
+    # ------------------------------
+    # Download Manager UI Setup
+    # ------------------------------
+    # (Already implemented in create_download_manager_window and related functions)
+
+    # ------------------------------
+    # Fullscreen Handling (Optional)
+    # ------------------------------
+    def on_window_state_event(self, widget, event):
+        if event.changed_mask & Gdk.WindowState.FULLSCREEN:
+            if event.new_window_state & Gdk.WindowState.FULLSCREEN:
+                self.notebook.set_show_tabs(False)
+                logger.info("Entered fullscreen. Tabs hidden.")
+            else:
+                self.notebook.set_show_tabs(True)
+                logger.info("Exited fullscreen. Tabs shown.")
+
+    # ------------------------------
+    # Save and Load Open Tabs
+    # ------------------------------
+    def on_save_tabs(self, widget):
+        """Save all open tabs to a file."""
+        try:
+            self.save_open_tabs()
+            dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Tabs Saved",
+            )
+            dialog.format_secondary_text("Your open tabs have been saved successfully.")
+            dialog.run()
+            dialog.destroy()
+            logger.info("User manually saved open tabs.")
+        except Exception as e:
+            logger.error(f"Failed to save open tabs: {e}")
+            error_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text="Error Saving Tabs",
+            )
+            error_dialog.format_secondary_text(f"An error occurred while saving your tabs: {e}")
+            error_dialog.run()
+            error_dialog.destroy()
+
+    def save_open_tabs(self):
+        """Save all open tab URLs to a JSON file."""
+        tabs = []
+        for i in range(self.notebook.get_n_pages()):
+            page = self.notebook.get_nth_page(i)
+            if isinstance(page, BrowserTab):
+                uri = page.webview.get_uri()
+                if uri:
+                    tabs.append(uri)
+
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        os.makedirs(saved_tabs_dir, exist_ok=True)
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        logger.debug(f"Saving open tabs to: {file_path}")
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(tabs, f, indent=4)
+            logger.info(f"Open tabs saved successfully: {tabs}")
+        except Exception as e:
+            logger.error(f"Failed to save open tabs: {e}")
+
+    def load_open_tabs(self):
+        """Load saved tabs from a JSON file."""
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        tabs_loaded = 0
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as f:
+                    urls = json.load(f)
+                    if urls:
+                        for url in urls:
+                            self.on_new_tab_with_url(url)
+                            tabs_loaded += 1
+                        logger.info(f"Loaded saved tabs: {urls}")
+                    else:
+                        logger.info("Saved tabs file is empty.")
+            except json.JSONDecodeError:
+                logger.error(f"Saved tabs file {file_path} contains invalid JSON.")
+            except Exception as e:
+                logger.error(f"Failed to load open tabs: {e}")
+        else:
+            logger.info(f"No saved tabs file found at: {file_path}")
+        return tabs_loaded
+
+    def delete_saved_tabs(self):
+        """Delete the saved tabs file."""
+        saved_tabs_dir = os.path.join(os.path.expanduser("~"), ".simple_browser")
+        file_path = os.path.join(saved_tabs_dir, "open_tabs.json")
+        logger.debug(f"Attempting to delete saved tabs file: {file_path}")
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Successfully deleted saved tabs file: {file_path}")
+                return True
+            else:
+                logger.info(f"No saved tabs file found at: {file_path}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting saved tabs file at {file_path}: {e}")
+            return False
+
+    def on_clear_saved_tabs(self, widget):
+        """Clear all saved tabs and reload the homepage."""
+        success = self.delete_saved_tabs()
+        if success:
+            while self.notebook.get_n_pages() > 0:
+                page = self.notebook.get_nth_page(0)
+                if isinstance(page, BrowserTab):
+                    self.notebook.remove(page)
+                    page.webview.destroy()
+                    page.destroy()
+            self.on_new_tab_with_url(self.homepage)
+            info_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Saved Tabs Deleted",
+            )
+            info_dialog.format_secondary_text("Your saved tabs have been deleted. The default homepage has been loaded.")
+            info_dialog.run()
+            info_dialog.destroy()
+            logger.info("User cleared saved tabs and default homepage loaded.")
+        else:
+            info_dialog = Gtk.MessageDialog(
+                parent=self,
+                modal=True,
+                destroy_with_parent=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text="No Saved Tabs",
+            )
+            info_dialog.format_secondary_text("There are no saved tabs to delete.")
+            info_dialog.run()
+            info_dialog.destroy()
+            logger.info("User attempted to clear saved tabs, but none existed.")
+
+    # ------------------------------
+    # Quit Application
+    # ------------------------------
+    def on_destroy(self, widget):
+        """Handle application exit."""
+        logger.info("Exiting application.")
+        self.autofill_manager.save_autofill_data()
+        Gtk.main_quit()
+        sys.exit(0)
+
+    # ------------------------------
+    # Keyboard Shortcuts
+    # ------------------------------
+    # (Already implemented in on_key_press_global)
+
+    # ------------------------------
+    # Download Manager UI Setup
+    # ------------------------------
+    # (Already implemented in create_download_manager_window and related functions)
+
+    # ------------------------------
+    # Fullscreen Handling (Optional)
+    # ------------------------------
+
+
+    # ------------------------------
+    # Save and Load Open Tabs
+    # ------------------------------
+    # (Already implemented in on_save_tabs, save_open_tabs, load_open_tabs)
+
+    # ------------------------------
+    # Quit Functionality
+    # ------------------------------
+    # (Already implemented in quit_browser)
+
+    # ------------------------------
+    # Address Bar Update
+    # ------------------------------
+    # (Already implemented in update_address_bar)
+
+    # ------------------------------
+    # URL Launcher
+    # ------------------------------
+    # (Already implemented in show_url_launcher and related functions)
+
+    # ------------------------------
+    # Bookmark Manager Setup
+    # ------------------------------
+    # (Already implemented in add_bookmark_buttons and related functions)
+
+    # ------------------------------
+    # Handle Tab Switch
+    # ------------------------------
+    # (Already implemented in on_switch_page)
+
+    # ------------------------------
+    # Add Navigation Buttons
+    # ------------------------------
+    # (Already implemented in add_navigation_buttons)
+
+    # ------------------------------
+    # Toggle Tabs Position
+    # ------------------------------
+    # (Already implemented in toggle_tab_position)
+
+    # ------------------------------
+    # Download Manager UI Setup
+    # ------------------------------
+    # (Already implemented in create_download_manager_window and related functions)
+
+    # ------------------------------
+    # About Us Dialog
+    # ------------------------------
+    # (Already implemented in on_about_us)
+
+    # ------------------------------
+    # Print Page Functionality
+    # ------------------------------
+    # (Already implemented in on_print_page, begin_print, draw_page)
+
+    # ------------------------------
+    # Screenshot Functionality
+    # ------------------------------
+    # (Already implemented in on_take_screenshot and on_snapshot_ready)
+
+    # ------------------------------
+    # Bookmark Opening Functions
+    # ------------------------------
+    # (Already implemented in open_bookmark_in_current_tab and related functions)
+
+    # ------------------------------
+    # Add Tab with Specific URL
+    # ------------------------------
+    def on_new_tab_with_url(self, url):
+        """Open a new tab with the specified URL."""
+        new_tab = BrowserTab(self, ad_block_rules=self.settings_manager.get_whitelist())
+        new_tab.webview.load_uri(url)
+        self.notebook.set_current_page(self.notebook.page_num(new_tab))
+        logger.info(f"New tab opened with URL: {url}")
+
+    # ------------------------------
+    # Main Entry Point
+    # ------------------------------
+    def get_current_page(self):
+        """Return the currently selected tab."""
+        page_num = self.notebook.get_current_page()
+        return self.notebook.get_nth_page(page_num)
+
+
+if __name__ == '__main__':
+    browser = SimpleBrowser()
+    browser.show_all()
+    Gtk.main()
