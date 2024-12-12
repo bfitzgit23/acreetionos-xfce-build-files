@@ -331,7 +331,6 @@ flex
 python-tomlkit
 python-sphinx
 python-sphinx_rtd_theme
-python-gi
 cpio
 yt-dlp
 mcfly
