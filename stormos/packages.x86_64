@@ -425,9 +425,7 @@ thunar-shares-plugin
 mousepad
 
 ##
-kwin
-systemsettings
-kde-gtk-config
+compiz-easy-patch
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
