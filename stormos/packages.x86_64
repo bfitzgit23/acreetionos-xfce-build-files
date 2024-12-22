@@ -436,7 +436,6 @@ gtk-doc
 libgtop
 
 adw-gtk-theme-git
-#compiz-easy-patch
 dxvk-bin
 gconf
 localsend-bin
@@ -466,20 +465,20 @@ yay
 zensu
 
 ## Calamares Installer
-python-urllib3
-python-mpv
-plasma-framework5
-calamares-app
-stormos-calamares-config
-kio5
-ki18n
-solid5
-xmlto
-ckbcomp
-kconfig5
-kpmcore
-qt5-base
-yaml-cpp
-boost-libs
-kcoreaddons5
-kiconthemes5
+#python-urllib3
+#python-mpv
+#plasma-framework5
+#calamares-app
+#stormos-calamares-config
+#kio5
+#ki18n
+#solid5
+#xmlto
+#ckbcomp
+#kconfig5
+#kpmcore
+#qt5-base
+#yaml-cpp
+#boost-libs
+#kcoreaddons5
+#kiconthemes5
