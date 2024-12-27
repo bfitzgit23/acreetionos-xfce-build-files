@@ -98,7 +98,6 @@ usb_modeswitch
 usbutils
 udisks2
 vpnc
-vim
 wireless-regdb
 wireless_tools
 wipe
@@ -313,7 +312,6 @@ perl-data-dump
 pkgconf
 python-gobject
 python-pip
-reflector
 scrot
 samba
 simple-scan
@@ -448,6 +446,7 @@ mintstick-git
 oh-my-bash-git
 qt6gtk2
 qt-sudo
+qogir-icon-theme
 qt5-webkit
 python-pyqt5
 preload
