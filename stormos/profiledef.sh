@@ -39,6 +39,7 @@ file_permissions=(
   ["/etc/gshadow"]="0:0:400"
   ["/abif-master/abif"]="0:0:777"
   ["/usr/bin/sbrowserv3"]="0:0:777"
+  ["/usr/local/bin/keyfix"]="0:0:777"
   ["/root/.ssh"]="0:0:0700"
   ["/root/.ssh/authorized_keys"]="0:0:0600"
 )
