@@ -3,11 +3,6 @@ echo "#################################"
 echo "Start stormmos-before"
 echo "#################################"
 
-echo "Populate Core Team keys"
-echo "#################################"
-pacman-key --init
-pacman -Syy
-
 echo "Copy grub StormOS theme"
 echo "#################################"
 mkdir -p /boot/grub/themes
