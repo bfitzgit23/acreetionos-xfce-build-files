@@ -46,9 +46,6 @@ echo "Fixing LightDM.conf User"
 echo "#################################"
 sed -i "s/autologin-user=liveuser/#autologin-user=/g" /etc/lightdm/lightdm.conf
 
-
-#!/bin/bash
-#set -e
 echo "#################################"
 echo "Fixing Pacman Databases"
 echo "#################################"
