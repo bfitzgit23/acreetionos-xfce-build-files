@@ -282,14 +282,13 @@ axel
 autoconf
 automake
 bleachbit
-chromium
 dialog
 engrampa
 ffmpeg
 fastfetch
 flac
 fontconfig
-fish
+firefox
 glances
 git
 #gnome-keyring
