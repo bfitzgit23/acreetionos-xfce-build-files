@@ -280,26 +280,22 @@ ttf-roboto
 ## Software #############################
 abiword
 application finder
-atril
 axel
 autoconf
 automake
 bleachbit
 dialog
-discord
 engrampa
 ffmpeg
 fastfetch
 flac
 fontconfig
 firefox-esr
-galculator
 glances
-gimp
 git
-gnome-boxes
 #gnome-keyring
 gnome-disk-utility
+gparted
 gamemode
 handbrake-cli
 htop
@@ -308,7 +304,6 @@ lib32-gamemode
 lame
 libappindicator-gtk2
 libappindicator-gtk3
-libreoffice-fresh
 mintstick
 mousepad
 mpv
@@ -318,13 +313,14 @@ osmo
 ocs-url
 pacman-contrib
 perl-data-dump
+pinta
 pkgconf
-plank
 python-gobject
 python-pip
 reflector
 scrot
 samba
+screenshooter
 simple-scan
 spice
 spice-gtk
@@ -332,7 +328,6 @@ spice-protocol
 spice-vdagent
 upower
 wget
-virtualbox
 vlc
 zenity
 xmlto
