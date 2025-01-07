@@ -278,19 +278,26 @@ adobe-source-sans-pro-fonts
 ttf-roboto
 
 ## Software #############################
+abiword
+application finder
+atril
 axel
 autoconf
 automake
 bleachbit
 dialog
+discord
 engrampa
 ffmpeg
 fastfetch
 flac
 fontconfig
-firefox
+firefox-esr
+galculator
 glances
+gimp
 git
+gnome-boxes
 #gnome-keyring
 gnome-disk-utility
 gamemode
@@ -301,6 +308,9 @@ lib32-gamemode
 lame
 libappindicator-gtk2
 libappindicator-gtk3
+libreoffice-fresh
+mintstick
+mousepad
 mpv
 ntp
 numlockx
@@ -309,8 +319,10 @@ ocs-url
 pacman-contrib
 perl-data-dump
 pkgconf
+plank
 python-gobject
 python-pip
+reflector
 scrot
 samba
 simple-scan
@@ -320,6 +332,7 @@ spice-protocol
 spice-vdagent
 upower
 wget
+virtualbox
 vlc
 zenity
 xmlto
