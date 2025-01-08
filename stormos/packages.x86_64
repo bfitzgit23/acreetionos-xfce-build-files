@@ -278,19 +278,17 @@ adobe-source-sans-pro-fonts
 ttf-roboto
 
 ## Software #############################
-abiword
-application finder
-axel
+abiwordaxel
 autoconf
 automake
 bleachbit
+chromium
 dialog
 engrampa
 ffmpeg
 fastfetch
 flac
 fontconfig
-firefox-esr
 glances
 git
 #gnome-keyring
@@ -304,7 +302,7 @@ lib32-gamemode
 lame
 libappindicator-gtk2
 libappindicator-gtk3
-mintstick
+mintstick-git
 mousepad
 mpv
 ntp
@@ -320,7 +318,6 @@ python-pip
 reflector
 scrot
 samba
-screenshooter
 simple-scan
 spice
 spice-gtk
