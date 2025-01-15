@@ -26,6 +26,7 @@ echo "FONT=ter-p16n" >> /etc/vconsole.conf
 REAL_HOME=$(getent passwd $(logname) | cut -d: -f6)
 
 rm -rf /usr/share/calamares
+rm -rf /abif-master
 #!/bin/bash -e
 
 # ... [previous parts of the script remain unchanged]
