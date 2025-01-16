@@ -1,4 +1,3 @@
-
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 alsa-utils
@@ -313,7 +312,6 @@ osmo
 ocs-url
 pacman-contrib
 perl-data-dump
-pm-utils
 pinta
 pkgconf
 python-gobject
