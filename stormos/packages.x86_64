@@ -98,7 +98,6 @@ udftools
 usb_modeswitch
 usbutils
 udisks2
-upower
 vpnc
 wireless-regdb
 wireless_tools
@@ -314,6 +313,7 @@ osmo
 ocs-url
 pacman-contrib
 perl-data-dump
+pm-utils
 pinta
 pkgconf
 python-gobject
@@ -326,7 +326,6 @@ spice
 spice-gtk
 spice-protocol
 spice-vdagent
-upower
 wget
 vlc
 zenity
