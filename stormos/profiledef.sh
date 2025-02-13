@@ -37,7 +37,6 @@ file_permissions=(
   ["/usr/bin/sib"]="0:0:777"
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
-  ["/abif-master/abif"]="0:0:777"
   ["/usr/bin/sbrowserv3"]="0:0:777"
   ["/usr/local/bin/keyfix"]="0:0:777"
   ["/root/.ssh"]="0:0:0700"
