@@ -278,12 +278,9 @@ adobe-source-sans-pro-fonts
 ttf-roboto
 
 ## Software #############################
-abiword
 axel
 autoconf
 automake
-bleachbit
-chromium
 dialog
 engrampa
 ffmpeg
@@ -294,7 +291,6 @@ glances
 git
 #gnome-keyring
 gnome-disk-utility
-gparted
 gamemode
 handbrake-cli
 htop
@@ -303,7 +299,6 @@ lib32-gamemode
 lame
 libappindicator-gtk2
 libappindicator-gtk3
-mintstick-git
 mousepad
 mpv
 ntp
@@ -447,7 +442,6 @@ libpamac-full
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
 mkinitcpio-openswap
-mintstick-git
 oh-my-bash-git
 qt6gtk2
 qt-sudo
@@ -463,7 +457,6 @@ stormos-vida-xfce-desktop-configs
 snapd
 snapd-glib
 ttf-ms-fonts
-timeshift
 xboxdrv
 yay
 zensu
