@@ -3,7 +3,7 @@
 
 iso_name="StormOS-Pescado-XFCE"
 iso_label="StormOS_Pescado_XFCE_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="StormOS <https://www.storm-os.com>"
+iso_publisher="StormOS <https://techcafe757.wixsite.com/storm-os>"
 iso_application="StormOS-Vida install medium"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"
