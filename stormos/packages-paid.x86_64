@@ -280,6 +280,9 @@ ttf-roboto
 axel
 autoconf
 automake
+acpi_call
+bbswitch
+chromium
 dialog
 engrampa
 ffmpeg
