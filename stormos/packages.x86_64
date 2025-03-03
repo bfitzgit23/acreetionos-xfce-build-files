@@ -448,7 +448,7 @@ pamac-all
 pamac-cli
 acreetionos-xfce-grub-theme
 AcreetionOS-XFCE-conf
-AcreetionOS-XFCE-desktop-configs
+acreetionos-xfce-desktop-configs
 snapd
 snapd-glib
 ttf-ms-fonts
