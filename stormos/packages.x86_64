@@ -446,9 +446,9 @@ python-pyqt5
 preload
 pamac-all
 pamac-cli
-stormos-grub-theme
-stormos-conf
-stormos-vida-xfce-desktop-configs
+acreetionos-xfce-grub-theme
+AcreetionOS-XFCE-conf
+AcreetionOS-XFCE-desktop-configs
 snapd
 snapd-glib
 ttf-ms-fonts
@@ -461,7 +461,7 @@ python-urllib3
 python-mpv
 plasma-framework5
 calamares-app
-stormos-calamares-config
+acreetionos-calamares-xfce 
 kio5
 ki18n
 solid5
