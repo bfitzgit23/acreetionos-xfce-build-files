@@ -417,8 +417,6 @@ xfce4-power-manager
 thunar-shares-plugin
 mousepad
 
-##
-compiz-easy-patch
 
 # ###########################
 # AUR APPS - DO NOT REORDER #
@@ -428,40 +426,21 @@ libgnome-keyring
 gtk-doc
 libgtop
 
-adw-gtk-theme-git
-dxvk-bin
-gconf
-localsend-bin
-lohit-fonts
-libpamac-full
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
 mkinitcpio-openswap
-oh-my-bash-git
-qt6gtk2
-qt-sudo
-qogir-icon-theme
-qt5-webkit
-python-pyqt5
-preload
-pamac-all
-pamac-cli
+pamac-aur
 acreetionos-xfce-grub-theme
 AcreetionOS-XFCE-conf
 acreetionos-xfce-desktop-configs
-snapd
-snapd-glib
-ttf-ms-fonts
-xboxdrv
 yay
-zensu
 
 ## Calamares Installer
 python-urllib3
 python-mpv
 plasma-framework5
 calamares-app
-acreetionos-calamares-xfce 
+acreetionos-calamares-config-xfce 
 kio5
 ki18n
 solid5
