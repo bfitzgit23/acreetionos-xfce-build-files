@@ -104,7 +104,6 @@ wpa_supplicant
 wvdial
 wmctrl
 #xfsprogs
-xrectsel
 xl2tpd
 yad
 
@@ -299,7 +298,6 @@ mpv
 ntp
 numlockx
 osmo
-ocs-url
 pacman-contrib
 perl-data-dump
 pinta
@@ -327,7 +325,6 @@ python-sphinx_rtd_theme
 cpio
 yt-dlp
 mcfly
-xrectsel
 xclip
 
 ## Xdg Utilities #############################
@@ -430,7 +427,7 @@ libgtop
 ttf-jetbrains-mono-nerd
 ttf-jetbrains-mono
 mkinitcpio-openswap
-pamac-aur
+pamac-aur-git
 acreetionos-xfce-grub-theme
 AcreetionOS-XFCE-conf
 acreetionos-xfce-desktop-configs
