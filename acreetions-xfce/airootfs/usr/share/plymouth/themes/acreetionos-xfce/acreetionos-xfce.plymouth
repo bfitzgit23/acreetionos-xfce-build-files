@@ -1,8 +1,8 @@
 [Plymouth Theme]
-Name=StormOS Plymouth
+Name=acreetions-xfce Plymouth
 Description=Sleek boot up progress bar
 ModuleName=script
 
 [script]
-ImageDir=/usr/share/plymouth/themes/stormos/assets
-ScriptFile=/usr/share/plymouth/themes/stormos/assets/stormos.script
+ImageDir=/usr/share/plymouth/themes/acreetions-xfce/assets
+ScriptFile=/usr/share/plymouth/themes/acreetions-xfce/assets/acreetions-xfce.script

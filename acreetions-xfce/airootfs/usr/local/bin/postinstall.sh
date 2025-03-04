@@ -26,7 +26,6 @@ echo "FONT=ter-p16n" >> /etc/vconsole.conf
 REAL_HOME=$(getent passwd $(logname) | cut -d: -f6)
 
 rm -rf /usr/share/calamares
-rm -rf /abif-master
 #!/bin/bash -e
 
 # ... [previous parts of the script remain unchanged]
@@ -36,7 +35,6 @@ REAL_HOME=$(getent passwd $(logname) | cut -d: -f6)
 
 # Remove desktop files
 rm -rf "${REAL_HOME}/Desktop/calamares.desktop"
-rm -rf "${REAL_HOME}/Desktop/abif.desktop"
 
 # Remove autostart files
 rm -rf "${REAL_HOME}/.config/autostart/calamares.desktop"
@@ -44,9 +42,8 @@ rm -rf "${REAL_HOME}/.config/autostart/NetworkManager.desktop"
 
 # ... [rest of the script remains unchanged]
 rm /usr/share/applications/calamares.desktop
-rm /usr/share/applications/abif.desktop
 
-plymouth-set-default-theme stormos
+plymouth-set-default-theme acreetionos-xfce
 
 # Remove the script itself
 rm "$0"
