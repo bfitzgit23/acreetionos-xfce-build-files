@@ -376,6 +376,7 @@ gtk3
 gtk-update-icon-cache
 #gtk-theme-switch2
 xcursor-vanilla-dmz
+papirus-icon-theme
 
 ## Theme engine #############################
 qt5-base
